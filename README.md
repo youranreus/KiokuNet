@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/brand/kiokunet.png" width="160" height="160" alt="KiokuNet：思考气泡">
+  <img src="assets/brand/kiokunet-rounded.png" width="160" height="160" alt="KiokuNet：思考气泡">
 </p>
 
 <h1 align="center">KiokuNet</h1>

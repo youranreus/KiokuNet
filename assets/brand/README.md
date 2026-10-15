@@ -1,6 +1,6 @@
 # KiokuNet 思考气泡
 
-六张候选对应三个方向，每个方向分别从左下角、右下角浮现。候选全部保留首次生成的原图，没有重绘或后处理。已选定 **A2 · 云朵思考泡（右下角）** 作为项目形象；README 使用的 `kiokunet.png` 为按用户要求通过内置 image_gen 编辑的圆角版本，四角外侧透明，A2 原图仍保存在候选目录中。编辑提示词见 [rounded-edit.json](rounded-edit.json)。
+六张候选对应三个方向，每个方向分别从左下角、右下角浮现。候选全部保留首次生成的原图，没有重绘或后处理。已选定 **A2 · 云朵思考泡（右下角）** 作为项目形象；README 使用的 `kiokunet-rounded.png` 为按用户要求通过内置 image_gen 编辑的圆角版本，四角外侧透明，A2 原图仍保存在候选目录中。编辑提示词见 [rounded-edit.json](rounded-edit.json)。
 
 | 方向与产品联系 | 左下角 | 右下角 |
 | --- | --- | --- |
@@ -18,4 +18,4 @@
 
 完整提示词、配色和生成记录：[A1](candidates/a1.json) · [A2](candidates/a2.json) · [B1](candidates/b1.json) · [B2](candidates/b2.json) · [C1](candidates/c1.json) · [C2](candidates/c2.json)。
 
-候选与记录仅保存在仓库中；npm 分发包只包含 README 使用的 `kiokunet.png`。
+候选与记录仅保存在仓库中；npm 分发包只包含 README 使用的 `kiokunet-rounded.png`。
