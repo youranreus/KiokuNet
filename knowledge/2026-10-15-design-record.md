@@ -1,5 +1,7 @@
 # KiokuNet 首版设计讨论记录
 
+> 本文保留设计确认记录。首版实现及验证进展见 [实现记录](implementation.md)，实际操作见 [README](../README.md)。
+
 - 日期：2026-10-15，Asia/Shanghai。
 - 参与人：reuszeng、Codex。
 - 状态：本记录中的“已确认”方案已经逐项获得用户认可；CLI、Skill 和部署尚未实现。

@@ -1,5 +1,7 @@
 # KiokuNet 首版 CLI 草案
 
+> 历史设计记录：CLI 已于同日实现，当前可执行参数见 [README](../README.md)，验证结果见 [实现记录](implementation.md)。下文保留设计阶段原文。
+
 截至 2026-10-15，命令职责来自已确认的设计讨论；`kioku` 命令名、子命令和参数是待实现草案，不能作为可用软件执行。最终决策见 [设计记录](2026-10-15-design-record.md)，术语见 [GLOSSARY](GLOSSARY.md)。
 
 ## 使用约定

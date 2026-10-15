@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -124,6 +124,12 @@ test("multiple identities require a binding, and migration seeds the new writer 
       ]).error.code,
       "MIGRATION_SEED_REQUIRED",
     );
+    // Reproduce a restart after a subset of immutable seed files was installed.
+    await mkdir(join(nd, "agents/dev/raw"), { recursive: true });
+    await writeFile(
+      join(nd, "agents/dev/raw/original.md"),
+      "keep this history\n",
+    );
     assert.equal(
       call(fresh, [
         "join",
@@ -152,7 +158,65 @@ test("multiple identities require a binding, and migration seeds the new writer 
       call(h, ["enroll", "--receipt", join(d, "dev.receipt")]).error.code,
       "UNKNOWN_INVITATION",
     );
-    const device = call(fresh, ["context"]).data.deviceId;
+    // Move back to the original node, which still contains retired history.
+    await writeFile(join(nd, "agents/dev/raw/later.md"), "new knowledge\n");
+    const backBundle = join(d, "back-bundle"),
+      backInvite = join(d, "back.invite"),
+      backReceipt = join(d, "back.receipt");
+    assert.equal(
+      call(fresh, [
+        "agent",
+        "migrate",
+        "--agent",
+        "dev",
+        "--target",
+        backBundle,
+        "--confirm",
+        "dev",
+      ]).ok,
+      true,
+    );
+    assert.equal(
+      call(h, [
+        "agent",
+        "migrate",
+        "--receipt",
+        join(backBundle, "migration.json"),
+        "--out",
+        backInvite,
+        "--confirm",
+        "dev",
+      ]).ok,
+      true,
+    );
+    assert.equal(
+      call(old, [
+        "agent",
+        "add",
+        "--invite",
+        join(d, "dev.invite"),
+        "--out",
+        join(d, "replay.receipt"),
+      ]).error.code,
+      "AGENT_RETIRED",
+    );
+    const returned = call(old, [
+      "agent",
+      "add",
+      "--invite",
+      backInvite,
+      "--seed",
+      backBundle,
+      "--out",
+      backReceipt,
+    ]);
+    assert.equal(returned.ok, true, JSON.stringify(returned));
+    assert.equal(
+      await readFile(join(od, "agents/dev/raw/later.md"), "utf8"),
+      "new knowledge\n",
+    );
+    assert.equal(call(h, ["enroll", "--receipt", backReceipt]).ok, true);
+    const device = call(old, ["context", "--agent", "dev"]).data.deviceId;
     assert.equal(
       call(h, ["node", "revoke", "--device", device, "--confirm", device]).ok,
       true,

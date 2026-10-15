@@ -22,7 +22,7 @@ import {
   rawPath,
   readJson,
 } from "./core.js";
-import { copyVerified, inventory, verifyFiles, FileEntry } from "./files.js";
+import { seedRaw, FileEntry } from "./files.js";
 import { setupSync, endpoint, reconcile } from "./sync.js";
 import { start } from "./services.js";
 
@@ -190,11 +190,12 @@ export async function joinNetwork(
   if (await exists(join(home, "config.json"))) {
     c = await load(home);
     requireThat(
-      c.mode === "node" &&
-        c.networkId === i.networkId &&
+      c.networkId === i.networkId &&
         c.hubDeviceId === i.hubDeviceId &&
         c.hubAddress === i.hubAddress &&
-        c.peers.find((p) => p.deviceId === i.hubDeviceId)?.publicKey ===
+        (c.mode === "hub"
+          ? c.publicKey
+          : c.peers.find((p) => p.deviceId === i.hubDeviceId)?.publicKey) ===
           i.hubPublicKey &&
         c.root === root,
       "NETWORK_MISMATCH",
@@ -225,11 +226,27 @@ export async function joinNetwork(
       serviceMode: service,
     };
   }
+  if (c.mode === "hub") {
+    const issued = c.invitations[i.id];
+    requireThat(
+      issued &&
+        !issued.revoked &&
+        JSON.stringify(issued.envelope) === JSON.stringify(envelope) &&
+        (!issued.consumedBy || issued.consumedBy === c.deviceId),
+      "UNKNOWN_INVITATION",
+      "Hub local registration requires an unused invitation issued by this Hub.",
+    );
+  }
   const existing = c.agents.find((a) => a.id === i.agentId);
   requireThat(
-    !existing || existing.active,
+    !existing || existing.active || (i.seedHash && !c.receipts[i.id]),
     "AGENT_RETIRED",
     "Retired identity requires an explicit migration, not an old invitation.",
+  );
+  requireThat(
+    !existing?.active || existing.local,
+    "WRITER_CONFLICT",
+    "Another device already owns this identity.",
   );
   if (i.seedHash && !c.receipts[i.id]) {
     requireThat(
@@ -245,14 +262,7 @@ export async function joinNetwork(
       "INVALID_SEED",
       "Migration bundle does not match the invitation.",
     );
-    await verifyFiles(join(seed, "data"), m.files);
-    const dest = rawPath(c, i.agentId);
-    requireThat(
-      !(await exists(dest)) || (await inventory(dest)).length === 0,
-      "SEED_TARGET_EXISTS",
-      "Migration target Raw is not empty.",
-    );
-    await copyVerified(join(seed, "data"), dest);
+    await seedRaw(join(seed, "data"), rawPath(c, i.agentId), m.files);
   }
   if (!existing)
     c.agents.push({
@@ -262,6 +272,12 @@ export async function joinNetwork(
       active: true,
       local: true,
     });
+  else {
+    existing.active = true;
+    existing.local = true;
+    existing.deviceId = c.deviceId;
+    delete existing.seedHash;
+  }
   const receipt =
     c.receipts[i.id] ||
     (await signed<Receipt>(home, {
@@ -272,6 +288,7 @@ export async function joinNetwork(
       publicKey: c.publicKey,
     }));
   c.receipts[i.id] = receipt;
+  if (c.mode === "hub") c.invitations[i.id]!.consumedBy = c.deviceId;
   await save(home, c);
   await layout(c, home);
   await writeDocument(resolve(out), receipt);
@@ -280,7 +297,7 @@ export async function joinNetwork(
     agentId: i.agentId,
     deviceId: c.deviceId,
     receipt: resolve(out),
-    enrollment: "awaiting-hub",
+    enrollment: c.mode === "hub" ? "registered" : "awaiting-hub",
     root: c.root,
   };
 }
@@ -344,6 +361,7 @@ export async function enroll(home: string, c: Config, path: string) {
     });
   else if (!agent.active) {
     agent.active = true;
+    agent.local = false;
     agent.deviceId = r.deviceId;
     delete agent.seedHash;
   }

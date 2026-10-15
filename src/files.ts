@@ -1,8 +1,16 @@
-import { readdir, lstat, mkdir, copyFile, readFile } from "node:fs/promises";
+import {
+  readdir,
+  lstat,
+  mkdir,
+  copyFile,
+  mkdtemp,
+  rm,
+  link,
+} from "node:fs/promises";
 import { join, dirname, isAbsolute } from "node:path";
 import { createReadStream } from "node:fs";
 import { createHash } from "node:crypto";
-import { requireThat } from "./core.js";
+import { requireThat, exists } from "./core.js";
 export interface FileEntry {
   path: string;
   size: number;
@@ -103,4 +111,40 @@ export async function verifyFiles(
     "INTEGRITY_FAILED",
     "Snapshot files do not match their manifest.",
   );
+}
+
+// Immutable files allow a safe retry: existing files must be an exact subset,
+// and each missing file is published atomically without replacing any history.
+export async function seedRaw(
+  source: string,
+  target: string,
+  files: FileEntry[],
+) {
+  await verifyFiles(source, files);
+  const present = (await exists(target)) ? await inventory(target) : [];
+  const expected = new Map(files.map((f) => [f.path, f]));
+  requireThat(
+    present.every((f) => {
+      const e = expected.get(f.path);
+      return e && e.sha256 === f.sha256 && e.size === f.size;
+    }),
+    "SEED_TARGET_CONFLICT",
+    "Existing Raw differs from migration history; no files were replaced.",
+  );
+  await mkdir(dirname(target), { recursive: true });
+  const stage = await mkdtemp(join(dirname(target), ".kioku-seed-"));
+  try {
+    await copyVerified(source, stage);
+    await verifyFiles(stage, files);
+    await mkdir(target, { recursive: true });
+    const installed = new Set(present.map((f) => f.path));
+    for (const f of files) {
+      if (installed.has(f.path)) continue;
+      await mkdir(dirname(join(target, f.path)), { recursive: true });
+      await link(join(stage, f.path), join(target, f.path));
+    }
+    await verifyFiles(target, files);
+  } finally {
+    await rm(stage, { recursive: true, force: true });
+  }
 }

@@ -9,11 +9,18 @@ import {
   requireThat,
   withLock,
   exists,
+  save,
 } from "./core.js";
 import { initialize, invite, joinNetwork, enroll } from "./network.js";
 import { syncStatus } from "./sync.js";
-import { start, stop, serviceFiles } from "./services.js";
-import { configureBackup, backupRun, listBackups, restore } from "./backup.js";
+import { start, stop, unregister, serviceFiles } from "./services.js";
+import {
+  configureBackup,
+  backupRun,
+  listBackups,
+  listNetworks,
+  restore,
+} from "./backup.js";
 import {
   retire,
   revoke,
@@ -43,8 +50,9 @@ const help = `KiokuNet 0.1.0 — personal agent memory network
   service start|stop|restart|files
   backup configure --target REMOTE:BUCKET/PREFIX [--config FILE]
   backup credentials (interactive rclone credential setup)
-  backup run|list
-  backup restore --snapshot ID --target NEW_DIRECTORY
+  backup run|networks
+  backup list [--network SOURCE_UUID]
+  backup restore --snapshot ID --target NEW_DIRECTORY [--network SOURCE_UUID]
   deps install
   skill install --runtime codex|hermes-agent [--source REPOSITORY] [--scope global|project]
 
@@ -130,7 +138,7 @@ try {
     ["context", "status", "doctor"].includes(cmd) ||
     (cmd === "agent" && sub === "list") ||
     (cmd === "service" && sub === "files") ||
-    (cmd === "backup" && sub === "list");
+    (cmd === "backup" && ["list", "networks"].includes(sub || ""));
   const perform = async (): Promise<unknown> => {
     if (cmd === "init") {
       const c = await initialize(home, {
@@ -330,13 +338,15 @@ try {
         return result;
       }
       if (sub === "run") return backupRun(home, c);
-      if (sub === "list") return listBackups(c);
+      if (sub === "networks") return listNetworks(c);
+      if (sub === "list") return listBackups(c, value("network"));
       if (sub === "restore")
         return restore(
           home,
           c,
           await need("snapshot", "Snapshot ID"),
           await need("target", "New restore directory"),
+          value("network"),
         );
     }
     if (cmd === "status")
@@ -362,6 +372,12 @@ try {
         "USAGE",
         "service start|stop|restart|files",
       );
+      if (value("service") && service !== c.serviceMode) {
+        await stop(c, home);
+        if (c.serviceMode === "native") await unregister(c, home);
+        c.serviceMode = service;
+        await save(home, c);
+      }
       if (sub !== "start") await stop(c, home);
       if (sub !== "stop") await start(c, home);
       return { service: sub, mode: c.serviceMode };
@@ -376,7 +392,11 @@ try {
   const e =
     error instanceof Failure
       ? error
-      : new Failure("INTERNAL", (error as Error).message, undefined, 1);
+      : String((error as NodeJS.ErrnoException).code).startsWith(
+            "ERR_PARSE_ARGS",
+          )
+        ? new Failure("USAGE", (error as Error).message)
+        : new Failure("INTERNAL", (error as Error).message, undefined, 1);
   console.log(
     JSON.stringify(
       {

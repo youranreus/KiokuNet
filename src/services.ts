@@ -105,6 +105,31 @@ export function serviceFiles(
   ];
 }
 export async function start(c: Config, home: string): Promise<void> {
+  if (c.serviceMode === "native" && process.platform === "linux") {
+    const uid = String(process.getuid!());
+    let lingering = await run("loginctl", [
+      "show-user",
+      uid,
+      "--property=Linger",
+      "--value",
+    ]);
+    if (lingering.trim() !== "yes") {
+      try {
+        await run("loginctl", ["enable-linger", uid]);
+      } catch {}
+      lingering = await run("loginctl", [
+        "show-user",
+        uid,
+        "--property=Linger",
+        "--value",
+      ]);
+    }
+    requireThat(
+      lingering.trim() === "yes",
+      "LINGER_REQUIRED",
+      "Configuration was saved. Ask your administrator to run loginctl enable-linger for this user, then retry service start. Native setup is not ready without logout/reboot persistence.",
+    );
+  }
   await reconcile(c);
   if (c.serviceMode === "manual") {
     if (await online(c)) return;
@@ -193,4 +218,17 @@ export async function stop(c: Config, home: string): Promise<void> {
     undefined,
     1,
   );
+}
+
+// Called only when explicitly changing from native to manual mode, after stop.
+export async function unregister(c: Config, home: string): Promise<void> {
+  if (process.platform === "linux") {
+    const id = label(home);
+    await run("systemctl", ["--user", "disable", `${id}.service`]);
+    if (c.backup)
+      await run("systemctl", ["--user", "disable", `${id}-backup.timer`]);
+  }
+  for (const f of serviceFiles(c, home)) await rm(f.path, { force: true });
+  if (process.platform === "linux")
+    await run("systemctl", ["--user", "daemon-reload"]);
 }

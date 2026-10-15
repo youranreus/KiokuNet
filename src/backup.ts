@@ -104,6 +104,31 @@ function configured(c: Config) {
   hubOnly(c);
   requireThat(c.backup, "BACKUP_NOT_CONFIGURED", "Run backup configure first.");
 }
+const networkPattern =
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+function sourceConfig(c: Config, network = c.networkId): Config {
+  configured(c);
+  requireThat(
+    networkPattern.test(network),
+    "INVALID_NETWORK",
+    "Source network must be a UUID.",
+  );
+  return { ...c, networkId: network };
+}
+export async function listNetworks(c: Config) {
+  configured(c);
+  const output = await transfer(c, ["lsf", c.backup!.target, "--dirs-only"]);
+  return {
+    networks: output
+      .split("\n")
+      .map((p) => p.replace(/\/$/, ""))
+      .filter(
+        (p) => p.startsWith("kiokunet-") && networkPattern.test(p.slice(9)),
+      )
+      .map((p) => p.slice(9))
+      .sort(),
+  };
+}
 async function complete(c: Config, id: string) {
   requireThat(
     snapshotPattern.test(id),
@@ -122,8 +147,8 @@ async function complete(c: Config, id: string) {
   );
   return marker;
 }
-export async function listBackups(c: Config) {
-  configured(c);
+export async function listBackups(config: Config, network?: string) {
+  const c = sourceConfig(config, network);
   const output = await transfer(c, ["lsf", remoteRoot(c), "--dirs-only"]);
   const snapshots: { id: string; complete: boolean }[] = [];
   for (const id of output
@@ -138,7 +163,7 @@ export async function listBackups(c: Config) {
       snapshots.push({ id, complete: false });
     }
   }
-  return { snapshots };
+  return { networkId: c.networkId, snapshots };
 }
 export async function backupRun(home: string, c: Config) {
   configured(c);
@@ -217,11 +242,12 @@ export async function backupRun(home: string, c: Config) {
 }
 export async function restore(
   home: string,
-  c: Config,
+  config: Config,
   id: string,
   target: string,
+  network?: string,
 ) {
-  configured(c);
+  const c = sourceConfig(config, network);
   target = await canonical(target);
   requireThat(
     !(await exists(target)),
@@ -261,10 +287,13 @@ export async function restore(
       "Restore destination appeared during download.",
     );
     await rename(stage, target);
-    c.backup!.lastRestore = new Date().toISOString();
-    await save(home, c);
+    if (c.networkId === config.networkId) {
+      config.backup!.lastRestore = new Date().toISOString();
+      await save(home, config);
+    }
     return {
       id,
+      networkId: c.networkId,
       target,
       verified: true,
       files: m.files.length,

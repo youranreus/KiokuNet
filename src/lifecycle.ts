@@ -132,8 +132,9 @@ export async function acceptMigration(
       m.networkId === c.networkId &&
       agent?.role === "member" &&
       agent.deviceId === m.deviceId &&
-      peer?.publicKey === m.publicKey &&
-      !peer.revoked,
+      (m.deviceId === c.deviceId
+        ? c.publicKey === m.publicKey
+        : peer?.publicKey === m.publicKey && !peer.revoked),
     "INVALID_MIGRATION",
     "Migration does not match the registered writer.",
   );

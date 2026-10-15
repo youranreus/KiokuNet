@@ -8,7 +8,7 @@ const cli = resolve("dist/cli.js");
 function call(home, args, extraEnv = {}) {
   const env = {
     ...process.env,
-    KIOKU_SYNCTHING: resolve(".tools/syncthing"),
+    KIOKU_SYNCTHING: process.env.KIOKU_SYNCTHING || resolve(".tools/syncthing"),
     ...extraEnv,
   };
   delete env.KIOKU_AGENT_ID;
@@ -77,6 +77,27 @@ test("signed invitation and receipt enroll one writer, are replay-safe, and reso
         .error.code,
       "IDENTITY_CONFLICT",
     );
+    const localInvite = join(dir, "local.invite"),
+      localReceipt = join(dir, "local.receipt");
+    assert.equal(
+      call(hub, ["invite", "--agent", "hub-research", "--out", localInvite]).ok,
+      true,
+    );
+    const local = call(hub, [
+      "agent",
+      "add",
+      "--invite",
+      localInvite,
+      "--out",
+      localReceipt,
+    ]);
+    assert.equal(local.ok, true, JSON.stringify(local));
+    assert.equal(local.data.enrollment, "registered");
+    assert.equal(
+      call(hub, ["context", "--agent", "hub-research"]).data.role,
+      "member",
+    );
+    assert.equal(call(hub, ["context"]).error.code, "IDENTITY_REQUIRED");
     const forged = JSON.parse(await readFile(receipt, "utf8"));
     forged.payload.deviceId = "A".repeat(56);
     await writeFile(join(dir, "forged.json"), JSON.stringify(forged));
