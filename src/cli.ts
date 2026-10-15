@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
+import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import {
   stateHome,
@@ -33,7 +34,10 @@ import { dirname, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { diagnose, lastCuration, backupHealth } from "./diagnostics.js";
 
-const help = `KiokuNet 0.1.0 — personal agent memory network
+const packageVersion = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+).version;
+const help = `KiokuNet ${packageVersion} — personal agent memory network
 
   init --agent ID --root DIR --address HOST[:PORT]
   invite --agent ID --out FILE

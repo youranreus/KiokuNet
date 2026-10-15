@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -53,4 +53,11 @@ test("noninteractive setup rejects missing or unsafe inputs before creating depe
   } finally {
     await rm(home, { recursive: true, force: true });
   }
+});
+
+test("CLI help reports the installed package version", async () => {
+  const pkg = JSON.parse(await readFile(resolve("package.json"), "utf8"));
+  const r = spawnSync(process.execPath, [cli, "--help"], { encoding: "utf8" });
+  assert.equal(r.status, 0);
+  assert.ok(r.stdout.startsWith(`KiokuNet ${pkg.version} —`));
 });

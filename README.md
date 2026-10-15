@@ -32,6 +32,10 @@ kioku --help
 
 不安装全局命令时，可以用 `node /绝对路径/KiokuNet/dist/cli.js`。Agent 执行 Skill 时须能从 PATH 找到 `kioku`。离线部署可预置依赖，再设置 `KIOKU_SYNCTHING`、`KIOKU_RCLONE` 为可执行文件的绝对路径。
 
+## 发布 CLI
+
+维护者使用 `npm run release -- --dry-run` 预览，`npm run release -- --draft` 上传草稿，`npm run release` 发布。脚本从包版本生成 `v<version>` tag，验证安装包与 SHA-256 附件；版本更新使用 `npm run release:version -- patch`，再提交并推送。完整步骤与失败重试见 [发布指南](knowledge/releasing.md)。
+
 ## 首次接入
 
 下列 `/srv`、IP 和用户名都是示例，先替换为实际可写目录及固定地址。默认私有配置目录为 `~/.config/kiokunet`，用 `KIOKU_HOME` 或 `--home` 改写；它与知识目录不能重叠。一台机器使用一个配置目录管理多个身份。
