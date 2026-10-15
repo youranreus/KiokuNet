@@ -1,0 +1,30 @@
+{
+  "label": "B2",
+  "direction": "连结思考泡",
+  "rationale": "宽圆的思考气泡与连成一体的圆泡尾，表达知识的连接和流转。",
+  "corner": "lower-right",
+  "path": "assets/brand/candidates/b2.png",
+  "colors": {
+    "subject": [
+      "#58C8C7",
+      "#154A57"
+    ],
+    "background": "#F1D7B4"
+  },
+  "dimensions": {
+    "width": 1254,
+    "height": 1254
+  },
+  "requestedDimensions": {
+    "width": 1536,
+    "height": 1536
+  },
+  "provider": "native image_gen",
+  "model": "not disclosed by runtime",
+  "mode": "built-in",
+  "constraintDeliveryMode": "main-prompt constraints",
+  "constraints": "Use no text or watermark. Add no borders, frames, cards, or presentation masks. Include one character only, with no extra subjects or scenery. Use no fragile lines, sharp tips, unnecessary outlines, tiny details, or decorative marks. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background solid and uniform, with no texture, vignette, or lighting variation.",
+  "prompt": "Create one complete full-bleed 1:1 square image, approximately 1536 × 1536.\nBackground: fill the entire square with solid gently muted creamy apricot #F1D7B4. Keep #F1D7B4 visible in every open area and in the corners not occupied by the character; the assigned emergence corner must be occupied by the character.\nSubject: place one extremely simplified, cute, endearing thinking bubble IP character on the background, reduced to one soft rounded continuous silhouette and one defining feature. Make it a horizontally wide cloudlike thought bubble whose broad round lobes merge into a connected blunt rounded bubble tail, suggesting shared thoughts and connected knowledge. Keep all bubble parts joined into one continuous silhouette.\nComplexity: use only 4–7 large basic shapes and at most two broad internal color regions. Use two simple eyes and add one tiny mouth only when it helps the expression. Remove every nonessential line, outline, anatomical detail, texture, and decoration. Keep the character readable at 32 × 32.\nColor behavior: use exactly three semantic colors in the complete image: exactly two IP base colors plus the background color. Use lake turquoise #58C8C7 for the dominant broad body and deep teal #154A57 for one broad continuous lower region and the simple eyes. Organize both into broad purposeful masses, and reuse them for facial marks. The independently chosen background is creamy apricot #F1D7B4, gently muted and restrained while remaining clearly chromatic, clean, and intentional rather than gray or muddy. Keep the IP, facial marks, and background clearly separated. Treat any example palette as optional inspiration, never as an allowlist.\nComposition: keep the character upright and emerging from the assigned lower-right, filling about 85–95% of the square so it remains visually dominant. Cropping at the bottom or assigned side is welcome when it strengthens the corner emergence. Preserve both paired identifying features. Never center or bottom-center the character.\nStyle: make simplification, cuteness, and lovable baby-like appeal the strongest qualities. Use large soft forms, compact proportions, thick rounded contours, and an ultra-clean graphic treatment. Prefer one clear shape over several explanatory details. Add an extremely, extremely subtle, almost imperceptible sense of depth through a barely-there neo-skeuomorphic treatment.\nFinish: show only the character on the full-canvas background, with clean surfaces and normal square outer corners.\nConstraints: Use no text or watermark. Add no borders, frames, cards, or presentation masks. Include one character only, with no extra subjects or scenery. Use no fragile lines, sharp tips, unnecessary outlines, tiny details, or decorative marks. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background solid and uniform, with no texture, vignette, or lighting variation.",
+  "generationCount": 1,
+  "postProcessing": "none; original copied unchanged"
+}

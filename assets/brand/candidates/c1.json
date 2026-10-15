@@ -1,0 +1,29 @@
+{
+  "label": "C1",
+  "direction": "沉思小气泡",
+  "rationale": "安静可靠的记忆伙伴",
+  "corner": "lower-left",
+  "path": "/Users/reuszeng/Code/Projects/KiokuNet/assets/brand/candidates/c1.png",
+  "source": "/Users/reuszeng/.codex/generated_images/01a13f50-a109-7cf2-ae42-bec902ff1bfc/exec-aa304c92-b550-46ab-b987-f8292f6847bb.png",
+  "prompt": "Create one complete full-bleed 1:1 square image, approximately 1536 × 1536.\nBackground: fill the entire square with solid gently muted mint #C4DED0. Keep gently muted mint #C4DED0 visible in every open area and in the corners not occupied by the character; the assigned emergence corner must be occupied by the character.\nSubject: place one extremely simplified, cute, endearing contemplative thought-bubble IP character on the background, reduced to one soft rounded continuous silhouette and one defining feature. Use a squat oversized round head and a blunt two-lobed bubble tail joined into the continuous silhouette, conveying a quiet reliable memory companion with a calm thoughtful expression. Both lobes remain visible.\nComplexity: use only 4–7 large basic shapes and at most two broad internal color regions. Use two simple eyes and add one tiny mouth only when it helps the expression. Remove every nonessential line, outline, anatomical detail, texture, and decoration. Keep the character readable at 32 × 32.\nColor behavior: use exactly three semantic colors in the complete image: exactly two IP base colors plus the background color. Choose the two IP colors from the subject and context, organize both into broad purposeful masses, and reuse them for facial marks. The subject colors are pale lavender #BCABF2 for the broad head and deep purple #49356F for one continuous broad lower region including the tail, with the same deep purple reused for the two eyes. Choose the background independently or follow the user's supplied background. Unless the user asks for vivid color, lower the background saturation slightly so it feels gently muted and restrained while remaining clearly chromatic, clean, and intentional rather than gray or muddy. Keep the IP, facial marks, and background clearly separated. Treat any example palette as optional inspiration, never as an allowlist.\nComposition: keep the character upright and emerging from the assigned lower-left, filling about 85–95% of the square so it remains visually dominant. Cropping at the bottom or assigned side is welcome when it strengthens the corner emergence. Preserve both paired identifying features. Never center or bottom-center the character.\nStyle: make simplification, cuteness, and lovable baby-like appeal the strongest qualities. Use large soft forms, compact proportions, thick rounded contours, and an ultra-clean graphic treatment. Prefer one clear shape over several explanatory details. Add an extremely, extremely subtle, almost imperceptible sense of depth through a barely-there neo-skeuomorphic treatment.\nFinish: show only the character on the full-canvas background, with clean surfaces and normal square outer corners.\nConstraints: Use no text or watermark. Add no borders, frames, cards, or presentation masks. Include one character only, with no extra subjects or scenery. Use no fragile lines, sharp tips, unnecessary outlines, tiny details, or decorative marks. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background solid and uniform, with no texture, vignette, or lighting variation.",
+  "colors": {
+    "ip": [
+      "#BCABF2",
+      "#49356F"
+    ],
+    "background": "#C4DED0"
+  },
+  "requestedDimensions": [
+    1536,
+    1536
+  ],
+  "provider": "native image_gen",
+  "model": "runtime does not disclose model name",
+  "constraintDeliveryMode": "main-prompt constraints",
+  "onePass": true,
+  "dimensions": [
+    1254,
+    1254
+  ],
+  "constraintText": "Use no text or watermark. Add no borders, frames, cards, or presentation masks. Include one character only, with no extra subjects or scenery. Use no fragile lines, sharp tips, unnecessary outlines, tiny details, or decorative marks. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background solid and uniform, with no texture, vignette, or lighting variation."
+}

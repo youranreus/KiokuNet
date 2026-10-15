@@ -1,0 +1,21 @@
+{
+  "label": "A1",
+  "direction": "云朵思考泡",
+  "rationale": "蓬松云瓣承载个人记忆，温和而可靠",
+  "corner": "lower-left",
+  "colors": {
+    "subject": [
+      "#FFF0CC",
+      "#34365E"
+    ],
+    "background": "#A9B7DF"
+  },
+  "provider": "OpenAI built-in image_gen",
+  "model": "Not exposed by runtime",
+  "constraintMode": "main-prompt constraints",
+  "prompt": "Create one complete full-bleed 1:1 square image, approximately 1536 × 1536 pixels.\nBackground: fill the entire square with solid gently muted periwinkle #A9B7DF. Keep this color visible in every open area and in the corners not occupied by the character; the assigned emergence corner must be occupied by the character.\nSubject: place one extremely simplified, cute, endearing cloud-shaped thought bubble IP character on the background, reduced to one soft rounded continuous silhouette and one defining feature: a short blunt rounded bubble tail fused into the cloud. The personality suggests a calm companion holding personal memories. Broad fluffy cloud lobes and a large head.\nComplexity: use only 4–7 large basic shapes and at most two broad internal color regions. Use two simple eyes and add one tiny mouth only when it helps the expression. Remove every nonessential line, outline, anatomical detail, texture, and decoration. Keep the character readable at 32 × 32.\nColor behavior: use exactly three semantic colors in the complete image: exactly two IP base colors, warm cream #FFF0CC and deep indigo #34365E, plus the background color. Organize both IP colors into broad purposeful masses: cream main cloud and one continuous indigo lower bubble region, reuse indigo for the simple eyes. Choose the background independently. Keep the background gently muted and restrained while remaining clearly chromatic, clean, and intentional rather than gray or muddy. Keep the IP, facial marks, and background clearly separated.\nComposition: keep the character upright and emerging from the assigned lower-left, filling about 85–95% of the square so it remains visually dominant. Cropping at the bottom or assigned side is welcome when it strengthens the corner emergence. Preserve both paired identifying features. Never center or bottom-center the character.\nStyle: make simplification, cuteness, and lovable baby-like appeal the strongest qualities. Use large soft forms, compact proportions, thick rounded contours, and an ultra-clean graphic treatment. Prefer one clear shape over several explanatory details. Add an extremely, extremely subtle, almost imperceptible sense of depth through a barely-there neo-skeuomorphic treatment.\nFinish: show only the character on the full-canvas background, with clean surfaces and normal square outer corners.\nConstraints: Use no text or watermark. Add no borders, frames, cards, or presentation masks. Include one character only, with no extra subjects or scenery. Use no fragile lines, sharp tips, unnecessary outlines, tiny details, or decorative marks. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background solid and uniform, with no texture, vignette, or lighting variation.",
+  "dimensions": [
+    1254,
+    1254
+  ]
+}

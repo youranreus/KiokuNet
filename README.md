@@ -1,191 +1,143 @@
-# KiokuNet
+<p align="center">
+  <img src="assets/brand/kiokunet.png" width="160" height="160" alt="KiokuNet：思考气泡">
+</p>
 
-面向个人多 Agent 协作的文件式记忆网络。各 Agent 在本地维护独立 Raw，远端 Hermes Leader 自动提炼公共知识。CLI 配置身份、路径、配对、文件同步和备份；Hermes 自己执行和调度整理任务。
+<h1 align="center">KiokuNet</h1>
 
-**当前版本：[v0.1.0](https://github.com/youranreus/KiokuNet/releases/tag/v0.1.0)，已提供可安装的 GitHub Release。** 已验证 macOS 本机多进程同步、原生后台服务、邀请登记、身份迁移及 rclone 本地后端恢复。真实 Linux Hub、云存储和 Hermes 整理闭环仍需部署验收。尚未发布到 npm。
+<p align="center">
+  <strong>让每个 Agent 的思考，成为共同的记忆。</strong><br>
+  A local-first memory network for your agents.
+</p>
+
+<p align="center">
+  <a href="https://github.com/youranreus/KiokuNet/releases/latest"><img src="https://img.shields.io/github/v/release/youranreus/KiokuNet?style=flat-square&amp;label=release&amp;color=7562D9" alt="GitHub 最新发布版本"></a>
+  <a href="#项目状态"><img src="https://img.shields.io/badge/status-early%20preview-E9A23B?style=flat-square" alt="项目状态：早期预览"></a>
+  <a href="#安装"><img src="https://img.shields.io/badge/Node.js-%3E%3D22.20-5FA574?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white" alt="Node.js 版本要求：22.20 或更新"></a>
+  <a href="#项目状态"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-64748B?style=flat-square" alt="目标平台：macOS 与 Linux"></a>
+</p>
+
+<p align="center">
+  <a href="#快速接入">快速接入</a> ·
+  <a href="knowledge/usage.md">使用指南</a> ·
+  <a href="https://github.com/youranreus/KiokuNet/releases">下载</a> ·
+  <a href="knowledge/releasing.md">发布指南</a> ·
+  <a href="https://github.com/youranreus/KiokuNet/issues">反馈问题</a>
+</p>
+
+---
+
+你在不同机器、不同 Agent 里积累的背景、偏好和项目决策，值得被下一次工作继续使用。
+
+**KiokuNet 把这些知识保存在你自己的文件里。** 每个 Agent 维护独立的原始记录（Raw），通过固定地址的 Hub 汇集；Hermes Leader 自动整理成公共知识，再同步回各节点。用一个 CLI 完成接入，让现有 Agent 通过 Skill 读写记忆。
+
+## 为什么使用 KiokuNet
+
+- **文件就在本地。** Markdown 和原始附件可直接查看、搜索和备份；离线时仍可读取已有副本、记录新知识。
+- **身份跟着 Agent。** 一台机器支持多个长期实例，各自拥有 Raw，通过显式身份绑定避免混用。
+- **知识保留来源。** Leader 自动提炼、去重并保留冲突依据；更正以新记录补充，原始记录继续保留。
+- **接入现有工具。** CLI 配置依赖、文件同步和备份服务；`kioku-memory` / `kioku-curate` 接入现有 Agent，整理任务由 Hermes 调度。
+
+## 如何工作
 
 ```mermaid
 flowchart LR
-  A["Agent A · 本地 Raw"] -->|Syncthing| H["固定地址 Hub · 各 Agent Raw"]
-  B["Agent B · 本地 Raw"] -->|Syncthing| H
-  H --> L["Hermes Leader · kioku-curate"]
-  L --> S["Hub · shared"]
-  S -->|Syncthing| AS["A · shared 副本"]
-  S -->|Syncthing| BS["B · shared 副本"]
-  H --> R["rclone · 每日快照"]
-  S --> R
+  A["Agent A"] -->|Raw 上传| H["Linux Hub<br/>汇集各来源 Raw"]
+  B["Agent B"] -->|Raw 上传| H
+  H --> L["Hermes Leader<br/>自动提炼"]
+  L --> S["公共知识 shared"]
+  S -->|shared 回传| A
+  S -->|shared 回传| B
+  H -.-> R["rclone 备份"]
+  S -.-> R
 ```
+
+Raw 通过 **Syncthing** 汇集，公共知识由 Leader 写入并下发。CLI 管理身份、路径和基础设施；Hermes 负责运行与调度整理任务。每个 Raw 只由所属节点写入，公共知识只有 Leader 写入。
 
 ## 安装
 
-前置：Node.js **≥ 22.20**、npm，macOS 或使用 systemd 的 Linux，arm64/amd64。解包依赖需要 `unzip`；Linux 的 Syncthing 包还需要 `tar`。CLI 自动寻找或下载 Syncthing / rclone，不安装 Node 或系统包管理器。
+需要 **Node.js ≥ 22.20** 和 npm。目标平台为 macOS / Linux（arm64、amd64）；Linux 原生后台服务使用 systemd。
 
-在本仓库执行：
+安装已发布版本，无需在目标机器编译：
 
 ```bash
-npm ci
-npm run build
-npm pack
-npm install -g ./kiokunet-0.1.0.tgz
+npm install -g https://github.com/youranreus/KiokuNet/releases/download/v0.1.0/kiokunet-0.1.0.tgz
 kioku --help
 ```
 
-不安装全局命令时，可以用 `node /绝对路径/KiokuNet/dist/cli.js`。Agent 执行 Skill 时须能从 PATH 找到 `kioku`。离线部署可预置依赖，再设置 `KIOKU_SYNCTHING`、`KIOKU_RCLONE` 为可执行文件的绝对路径。
+[查看所有版本](https://github.com/youranreus/KiokuNet/releases) · [下载 SHA-256 校验文件](https://github.com/youranreus/KiokuNet/releases/download/v0.1.0/SHA256SUMS) · [校验与安装说明](knowledge/releasing.md#用户安装)
 
-## 发布 CLI
+CLI 会寻找或下载 Syncthing / rclone；解包需要 `unzip`，Linux 还需 `tar`。Node.js 需自行安装。目前通过 GitHub Release 分发，尚未发布到 npm registry。
 
-维护者使用 `npm run release -- --dry-run` 预览，`npm run release -- --draft` 上传草稿，`npm run release` 发布。脚本从包版本生成 `v<version>` tag，验证安装包与 SHA-256 附件；版本更新使用 `npm run release:version -- patch`，再提交并推送。完整步骤与失败重试见 [发布指南](knowledge/releasing.md)。
+## 快速接入
 
-## 首次接入
+准备一台有固定可达地址的 Linux Hub。下面的 `192.0.2.10` 为示例，请替换为实际地址，并允许节点访问 Hub 的 **TCP 22000**。
 
-下列 `/srv`、IP 和用户名都是示例，先替换为实际可写目录及固定地址。默认私有配置目录为 `~/.config/kiokunet`，用 `KIOKU_HOME` 或 `--home` 改写；它与知识目录不能重叠。一台机器使用一个配置目录管理多个身份。
-
-在 Linux Hub：
+**1. 在 Hub 创建网络和邀请**
 
 ```bash
-kioku init --agent hermes-main --root /srv/kiokunet --address 192.0.2.10:22000
+kioku init --agent hermes-main --root "$HOME/kiokunet" --address 192.0.2.10:22000
 kioku invite --agent codex-mac --out /tmp/codex-mac.invite.json
 ```
 
-Hub 需允许节点访问 TCP 22000；不暴露 Syncthing GUI/API。CLI 将 GUI 绑定回环地址，关闭公共发现、局域网发现、中继及自动 NAT。Linux 启动原生服务前会检查并尝试启用当前用户的 linger；权限不足会报错，此时管理员执行 `loginctl enable-linger <用户名>`，再重试 `kioku service start`。
-
-通过可信渠道把邀请文件传到 Mac，在 Mac 执行：
+**2. 将邀请传到本机，再执行接入**
 
 ```bash
 kioku join --invite /tmp/codex-mac.invite.json \
-  --root /Users/reuszeng/kiokunet --out /tmp/codex-mac.receipt.json
+  --root "$HOME/kiokunet" --out /tmp/codex-mac.receipt.json
+kioku skill install --runtime codex
 ```
 
-把回执传回 Hub，在 Hub 执行：
+**3. 将回执传回 Hub，完成登记并安装 Leader Skill**
 
 ```bash
 kioku enroll --receipt /tmp/codex-mac.receipt.json
-kioku status --json
-kioku doctor --json
-```
-
-`join` 的 `awaiting-hub` 表示尚需 Hub 登记；`enroll` 的 `registered` 表示登记成功，连接和文件收敛以 `status` 为准。邀请和回执都带签名，邀请本身仍需要可信传递。重复接入不会重建身份或清空知识。
-
-同机增加身份：先在 Hub 为新 ID 生成邀请，再在目标机器执行 `kioku agent add --invite FILE --out RECEIPT`，最后回 Hub `enroll`。若目标机器就是 Hub，`agent add` 会直接完成本地登记，无需再次 `enroll`。
-
-## Agent 与 Skill
-
-普通机器：
-
-```bash
-kioku skill install --runtime codex
-export KIOKU_AGENT_ID=codex-mac
-kioku context --json
-```
-
-Hub：
-
-```bash
 kioku skill install --runtime hermes-agent
-export KIOKU_AGENT_ID=hermes-main
-kioku context --json
+kioku status --json
 ```
 
-安装器薄封装 `npx -y skills@1.7.2 add`，默认从当前安装包分发静态 Skill，支持 `--source` 指定仓库、`--scope project` 指定当前项目范围。Hub 安装 `kioku-memory` 和 `kioku-curate`，普通节点只安装 `kioku-memory`。更新由 `skills` 管理；本机身份和路径保存在独立配置里。
+两个文件通过可信渠道传递。`join` 成功后仍需 Hub 执行 `enroll`；文件是否同步完成以实际连接和文件夹状态为准。Linux 若提示 linger 权限不足，按 [完整接入指南](knowledge/usage.md#首次接入) 完成服务常驻配置。
 
-将身份环境变量绑定到具体 Agent 的执行环境，不要把多实例绑定为同一个 ID。只有一个活跃本地实例时可自动识别；多个实例必须传 `--agent` 或环境绑定；两者冲突时报错。`--agent` 用于管理命令时表示操作对象。
+**4. 在 Hermes 配置整理任务**
 
-在 Hermes 自行配置定时任务，并确保其实际 profile 能加载这两个 Skill、PATH 能找到 CLI。任务说明可用：
+将下面的任务说明交给 Hub 上能加载 `kioku-curate` 的 Hermes profile，先手动验证，再配置定时执行：
 
-> 使用 kioku-curate。KiokuNet 身份为 hermes-main，先运行 kioku context --agent hermes-main --json；按返回路径增量整理 Raw，自动提炼公共知识并保存进度，无需人工确认。
+> 使用 kioku-curate，身份为 hermes-main。先执行 `kioku context --agent hermes-main --json`，按返回路径增量整理 Raw，保留来源和不确定性，自动更新公共知识并保存进度，无需人工确认。
 
-KiokuNet 不生成 Hermes cron、不调用模型、不接管任务重试。`status.curation` 仅展示 Skill 写入的最近进度，不代表实时任务状态。五分钟知识流转目标需要结合 Hermes 调度频率实测。
+多个本地 Agent 共用一套配置时，为各自执行环境绑定 `KIOKU_AGENT_ID`，或在查询时传 `--agent`。身份和机器路径独立保存在本机配置中，不写入 Skill。详见 [Agent 与 Skill](knowledge/usage.md#agent-与-skill)。
 
-目录约定：
+## 项目状态
 
-```text
-知识根目录/
-├── agents/<agent_id>/raw/   # 所属 Agent 只追加；Hub 汇集各来源
-└── shared/                 # Leader 维护，节点接收副本
-    ├── INDEX.md
-    ├── profile/
-    ├── projects/
-    └── topics/
-私有配置目录/               # 不同步、不进入知识快照
-├── config.json             # 身份、设备、配对及基础设施配置
-├── identity.pem            # 配对签名私钥
-├── syncthing/              # 同步凭据和本地数据库
-├── rclone.conf             # 由凭据向导创建
-└── curation/               # 整理进度、互斥锁、公共文档旧版本
-```
+**首版已发布，正在验证真实部署。** 当前验证集中在 macOS 本机环境；Linux Hub、真实云备份和 Hermes 定时整理闭环仍待实机验收。
 
-Raw 更正通过新增记录完成；附件保存原文件和哈希。每个 Raw 只有一个写入节点，shared 只有 Leader 写入。同步方向和 Skill 约定不构成同一系统用户下的强权限隔离。
+| 已验证 | 待完成 |
+| --- | --- |
+| 邀请与回执登记、同机多身份、迁移与撤销 | Linux 服务重启与退出登录后的持续运行 |
+| 真实 Syncthing 双端 Raw / shared 同步 | 实际 Hermes profile 的增量提炼与定时执行 |
+| rclone 本地后端快照、损坏检测与跨网络恢复 | 真实云存储备份与恢复演练 |
+| macOS 后台服务、Codex / Hermes Skill 分发 | 多机器端到端时效验证 |
 
-## 备份与灾难恢复
+查看 [详细验收记录](knowledge/implementation.md)。当前按个人可信协作场景设计；身份与同步方向约定不构成同一系统用户下的强权限隔离。备份需要单独配置后才生效。
 
-Hub 配置 rclone 凭据和目标：
+## 文档导航
+
+| 我想了解 | 从这里开始 |
+| --- | --- |
+| 完整安装、首次接入与身份绑定 | [使用与运维指南](knowledge/usage.md) |
+| 备份、灾难恢复与换机迁移 | [备份与恢复](knowledge/usage.md#备份与灾难恢复) · [迁移与撤销](knowledge/usage.md#身份迁移与撤销) |
+| Agent 如何读取和记录知识 | [kioku-memory](skills/kioku-memory/SKILL.md) |
+| Leader 如何提炼公共知识 | [kioku-curate](skills/kioku-curate/SKILL.md) |
+| 架构取舍和名词含义 | [架构决策](knowledge/adr/README.md) · [术语表](knowledge/GLOSSARY.md) |
+| 如何构建、测试与发布 | [开发说明](knowledge/usage.md#运维与开发) · [发布指南](knowledge/releasing.md) |
+
+## 参与开发
+
+欢迎通过 [Issues](https://github.com/youranreus/KiokuNet/issues) 提交问题和建议。报告问题时附上系统、Node.js 版本、复现步骤和去除敏感信息的错误输出。
 
 ```bash
-kioku backup credentials
-kioku backup configure --target remote:bucket/kiokunet
-kioku backup run
-kioku backup list --json
-kioku backup restore --snapshot <快照ID> --target /srv/kiokunet-restored
-```
-
-也可用 `--config /私有路径/rclone.conf` 提供已有凭据；本地目录可作为测试备份目标。原生服务每天触发一次备份，保留 30 天已完成快照。备份先下载校验，再写完成标记。恢复要求新目录并校验全部文件；不会自动覆盖在线数据或切换同步根目录。
-
-若原 Hub 的私有配置完全丢失：在新 Hub `init`，配置相同存储目标和新凭据，然后：
-
-```bash
-kioku backup networks --json
-kioku backup list --network <旧网络UUID> --json
-kioku backup restore --network <旧网络UUID> \
-  --snapshot <快照ID> --target /srv/recovered-old-network
-```
-
-这样能找回 Raw/shared，但不会恢复设备私钥或自动接续旧网络。请先检查恢复数据，再安排停写、人工切换和重新配对。原节点仍有副本时先保留它们；不要让新旧网络同时写同一目录。24 小时恢复点目标依赖每日快照实际成功，以 `doctor` 的备份新鲜度检查为准。
-
-## 身份迁移与撤销
-
-停止原 Agent 写入，在旧机器导出迁移包（保留原知识）：
-
-```bash
-kioku agent migrate --agent codex-mac --target /tmp/codex-migration --confirm codex-mac
-```
-
-把包中的 `migration.json` 传到 Hub：
-
-```bash
-kioku agent migrate --receipt /tmp/codex-migration/migration.json \
-  --out /tmp/replacement.invite.json --confirm codex-mac
-```
-
-将完整迁移包及新邀请传到接管机器：
-
-```bash
-kioku join --invite /tmp/replacement.invite.json --seed /tmp/codex-migration \
-  --root /新机器/知识目录 --out /tmp/replacement.receipt.json
-```
-
-最后在 Hub `enroll` 新回执。接管前验证种子文件；允许中断重试、迁回旧机器，已有文件必须与种子历史一致，不覆盖冲突内容。Leader/Hub 的完整迁移暂按备份恢复与重新配对处理。
-
-`kioku agent remove --agent ID --confirm ID` 停用身份；普通节点停用后还需在 Hub 停用对应身份。`kioku node revoke --device DEVICE_ID --confirm DEVICE_ID` 由 Hub 撤销设备后续访问。这些操作保留文件，不能远程抹除已有副本。
-
-## 运维与开发
-
-- `service start|stop|restart|files`：同步/备份服务操作，`files` 可查看原生服务配置。macOS 用登录用户的 LaunchAgents，Linux 用 systemd user service/timer。
-- `--service manual`：初始化时只配置；随后 `service start` 启动临时后台进程，没有开机启动或备份定时器。`service start --service native` 可切到原生服务。
-- `status --json`：连接、文件夹、备份和整理进度。`doctor --runtime codex|hermes-agent --json`：检查运行条件与 Skill 文件；实际运行器加载情况仍需在对应 profile 验证。
-- CLI JSON 外层为 `{ok, data}` 或 `{ok:false, error}`；退出码 0 成功、1 运行故障、2 输入/状态错误、3 doctor 检查不通过。
-- 配置变更持有 `mutation.lock`。进程意外退出后，确认没有相关进程再人工清理遗留锁；不会自动抢锁。
-
-```bash
+git clone https://github.com/youranreus/KiokuNet.git
+cd KiokuNet
 npm ci
-npm run test:prepare       # 下载并校验真实测试依赖，需要网络
-npm test                  # 输入与身份入口
-npm run test:integration  # 临时目录内的真实 Syncthing/rclone 流程
-npm run typecheck
-npm run format:check
-# macOS 可选：临时注册/删除独立 LaunchAgent，测试结束清理
-KIOKU_TEST_NATIVE=1 node --test test/integration/native-service.test.mjs
+npm test
 ```
 
-集成测试需要允许监听本地端口。可用 `KIOKU_SYNCTHING` / `KIOKU_RCLONE` 指定已有二进制，跳过依赖准备。测试不使用真实云凭据，不启动 Hermes。当前验证结果与部署待办见 [实现与验收记录](knowledge/implementation.md)。
-
-设计来源：[讨论记录](knowledge/2026-10-15-design-record.md)、[历史 CLI 草案](knowledge/cli-draft.md)、[术语](knowledge/GLOSSARY.md)、[架构决策](knowledge/adr/README.md)。实际参数以此 README 和 `kioku --help` 为准。
+涉及同步或备份的改动，再执行 `npm run test:prepare` 和 `npm run test:integration`。集成测试需要本地端口权限；完整命令和可选测试见 [开发说明](knowledge/usage.md#运维与开发)。
