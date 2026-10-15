@@ -1,0 +1,7 @@
+{
+  "provider": "OpenAI built-in image_gen",
+  "model": "Not exposed by runtime",
+  "source": "candidates/a2.png",
+  "output": "kiokunet.png",
+  "prompt": "Edit the supplied image with exactly one change: round the four outer corners of the square artwork, using a smooth corner radius of approximately 18% of the image width. Make only the areas outside the rounded square fully transparent. Preserve all artwork inside the rounded square as closely as possible: same cloud-shaped thought bubble, same face, expression, eyes, mouth, colors, background, shading, scale and positioning. Do not redesign, add padding, shrink, recenter, rotate or add anything. Keep the original square canvas size. No border, frame, shadow, text or added decoration."
+}
