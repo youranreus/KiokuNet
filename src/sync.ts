@@ -1,6 +1,15 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
-import { randomBytes } from "node:crypto";
+import {
+  readFile,
+  writeFile,
+  mkdir,
+  open,
+  lstat,
+  rename,
+  rm,
+} from "node:fs/promises";
+import { constants } from "node:fs";
+import { join, dirname } from "node:path";
+import { randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import { Config, Failure, exists, requireThat, rawPath, sha } from "./core.js";
 import { run, dependency } from "./process.js";
@@ -73,6 +82,11 @@ interface Folder {
   path: string;
   type: string;
   devices: { deviceID: string }[];
+  ignorePerms?: boolean;
+  syncOwnership?: boolean;
+  syncXattrs?: boolean;
+  maxConflicts?: number;
+  versioning?: { type: string };
 }
 export function folders(c: Config): Folder[] {
   const permitted = c.peers.filter((p) => !p.revoked).map((p) => p.deviceId);
@@ -102,7 +116,14 @@ export function folders(c: Config): Folder[] {
       })),
     });
   }
-  return result;
+  return result.map((f) => ({
+    ...f,
+    ignorePerms: true,
+    syncOwnership: false,
+    syncXattrs: false,
+    maxConflicts: 0,
+    versioning: { type: "" },
+  }));
 }
 const xml = (s: string | number) =>
   String(s).replace(
@@ -149,14 +170,35 @@ export async function reconcile(c: Config): Promise<void> {
   const fs = folders(c);
   for (const f of fs) {
     await mkdir(f.path, { recursive: true });
+    requireThat(
+      !(await lstat(f.path)).isSymbolicLink(),
+      "UNSAFE_FILE",
+      `Sync root must be a real directory: ${f.path}`,
+    );
     await mkdir(join(f.path, ".stfolder"), { recursive: true });
+    requireThat(
+      !(await lstat(join(f.path, ".stfolder"))).isSymbolicLink(),
+      "UNSAFE_FILE",
+      "Sync markers must be real directories.",
+    );
     const ignorePath = join(f.path, ".stignore");
-    const ignore = (await exists(ignorePath))
-      ? await readFile(ignorePath, "utf8")
-      : "";
+    const ignore = await readIgnore(ignorePath);
     // Must precede any existing allow-pattern; incomplete records are never announced.
-    if (!ignore.startsWith("*.kioku-tmp\n"))
-      await writeFile(ignorePath, `*.kioku-tmp\n${ignore}`, { mode: 0o600 });
+    const managed = "*.kioku-tmp\n.kioku-curation\n";
+    if (!ignore.startsWith(managed)) {
+      // Stage outside the writable Raw. Atomic replacement never follows a
+      // symlink or writes a hard-linked inode swapped into .stignore meanwhile.
+      const temporary = join(dirname(f.path), `.kioku-ignore-${randomUUID()}`);
+      try {
+        await writeFile(temporary, `${managed}${ignore}`, {
+          mode: 0o600,
+          flag: "wx",
+        });
+        await rename(temporary, ignorePath);
+      } finally {
+        await rm(temporary, { force: true });
+      }
+    }
   }
   const devices = [
     ...new Set([
@@ -207,12 +249,39 @@ export async function reconcile(c: Config): Promise<void> {
     "SYNC_CONFIG",
     "Missing generated Syncthing configuration.",
   );
-  const contents = `<configuration version="${version}">\n${fs.map((f) => `<folder id="${xml(f.id)}" label="${xml(f.label)}" path="${xml(f.path)}" type="${f.type}" rescanIntervalS="60" fsWatcherEnabled="true">${f.devices.map((d) => `<device id="${d.deviceID}"/>`).join("")}</folder>`).join("\n")}
+  const contents = `<configuration version="${version}">\n${fs.map((f) => `<folder id="${xml(f.id)}" label="${xml(f.label)}" path="${xml(f.path)}" type="${f.type}" rescanIntervalS="60" fsWatcherEnabled="true" ignorePerms="true"><maxConflicts>0</maxConflicts><versioning type=""/><syncOwnership>false</syncOwnership><syncXattrs>false</syncXattrs>${f.devices.map((d) => `<device id="${d.deviceID}"/>`).join("")}</folder>`).join("\n")}
 ${devices.map((d) => `<device id="${d.deviceID}" name="${d.name}" introducer="false" autoAcceptFolders="false">${d.addresses.map((a) => `<address>${xml(a)}</address>`).join("")}</device>`).join("\n")}
 <gui enabled="true" tls="false"><address>127.0.0.1:${c.sync.guiPort}</address><apikey>${c.sync.apiKey}</apikey></gui>
 <options><listenAddress>tcp://0.0.0.0:${c.sync.listenPort}</listenAddress><globalAnnounceEnabled>false</globalAnnounceEnabled><localAnnounceEnabled>false</localAnnounceEnabled><relaysEnabled>false</relaysEnabled><natEnabled>false</natEnabled><urAccepted>-1</urAccepted><autoUpgradeIntervalH>0</autoUpgradeIntervalH><startBrowser>false</startBrowser></options>
 </configuration>\n`;
   await writeFile(path, contents, { mode: 0o600 });
+}
+
+async function readIgnore(path: string): Promise<string> {
+  let file;
+  try {
+    file = await open(
+      path,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    );
+    const s = await file.stat();
+    requireThat(
+      s.isFile() && s.nlink === 1,
+      "UNSAFE_FILE",
+      `Sync control file must be a regular, unlinked file: ${path}`,
+    );
+    return await file.readFile("utf8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return "";
+    if ((e as NodeJS.ErrnoException).code === "ELOOP")
+      throw new Failure(
+        "UNSAFE_FILE",
+        `Sync control file must not be a symlink: ${path}`,
+      );
+    throw e;
+  } finally {
+    await file?.close();
+  }
 }
 export async function syncStatus(c: Config) {
   if (!(await online(c)))

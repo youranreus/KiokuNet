@@ -9,19 +9,11 @@ import {
   Failure,
   requireThat,
   withLock,
-  exists,
   save,
 } from "./core.js";
 import { initialize, invite, joinNetwork, enroll } from "./network.js";
 import { syncStatus } from "./sync.js";
 import { start, stop, unregister, serviceFiles } from "./services.js";
-import {
-  configureBackup,
-  backupRun,
-  listBackups,
-  listNetworks,
-  restore,
-} from "./backup.js";
 import {
   retire,
   revoke,
@@ -31,8 +23,12 @@ import {
 import { dependency, run } from "./process.js";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { spawn } from "node:child_process";
-import { diagnose, lastCuration, backupHealth } from "./diagnostics.js";
+import { diagnose, lastCuration } from "./diagnostics.js";
+import {
+  attachWorkspace,
+  detachWorkspace,
+  checkWorkspaces,
+} from "./workspace.js";
 
 const packageVersion = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
@@ -52,11 +48,9 @@ const help = `KiokuNet ${packageVersion} — personal agent memory network
   node revoke --device DEVICE_ID --confirm DEVICE_ID
   status | doctor
   service start|stop|restart|files
-  backup configure --target REMOTE:BUCKET/PREFIX [--config FILE]
-  backup credentials (interactive rclone credential setup)
-  backup run|networks
-  backup list [--network SOURCE_UUID]
-  backup restore --snapshot ID --target NEW_DIRECTORY [--network SOURCE_UUID]
+  workspace attach --source RAW_DIR --raw-path PATH --shared-path PATH --user OS_USER [--all-raw-path PATH]
+  workspace detach --raw-path PATH
+  workspace list | workspace check
   deps install
   skill install --runtime codex|hermes-agent [--source REPOSITORY] [--scope global|project]
 
@@ -78,13 +72,14 @@ const strings = [
   "device",
   "confirm",
   "target",
-  "config",
-  "snapshot",
   "runtime",
   "source",
   "scope",
-  "network",
   "seed",
+  "raw-path",
+  "shared-path",
+  "all-raw-path",
+  "user",
 ];
 let json = process.argv.includes("--json");
 try {
@@ -142,8 +137,14 @@ try {
     ["context", "status", "doctor"].includes(cmd) ||
     (cmd === "agent" && sub === "list") ||
     (cmd === "service" && sub === "files") ||
-    (cmd === "backup" && ["list", "networks"].includes(sub || ""));
+    (cmd === "workspace" && ["list", "check"].includes(sub || ""));
   const perform = async (): Promise<unknown> => {
+    if (cmd === "workspace" && sub === "attach")
+      requireThat(
+        value("user"),
+        "ISOLATION_REQUIRED",
+        "Workspace attachment requires --user: a separate, unprivileged OS account.",
+      );
     if (cmd === "init") {
       const c = await initialize(home, {
         agent: await need("agent", "Leader Agent ID"),
@@ -167,7 +168,6 @@ try {
           home,
           process.env.KIOKU_SYNCTHING,
         ),
-        rclone: await dependency("rclone", home, process.env.KIOKU_RCLONE),
       };
     if (cmd === "join")
       return joinNetwork(
@@ -181,6 +181,31 @@ try {
         value("seed"),
       );
     const c = await load(home);
+    if (cmd === "workspace") {
+      if (sub === "attach")
+        return attachWorkspace(home, c, {
+          source: await need("source", "Local Raw source directory"),
+          raw: await need("raw-path", "Workspace path for your files"),
+          shared: await need(
+            "shared-path",
+            "Workspace path for shared knowledge",
+          ),
+          allRaw: value("all-raw-path"),
+          user: value("user")!,
+        });
+      if (sub === "detach")
+        return detachWorkspace(
+          home,
+          c,
+          await need("raw-path", "Workspace Raw entry"),
+        );
+      if (sub === "list") return { workspaces: c.workspaces || [] };
+      if (sub === "check") {
+        const result = await checkWorkspaces(home, c);
+        if (!result.healthy) process.exitCode = 3;
+        return result;
+      }
+    }
     if (cmd === "context") return context(c, home, value("agent"));
     if (cmd === "invite")
       return invite(
@@ -263,8 +288,12 @@ try {
         "INVALID_SOURCE",
         "Invalid skill source.",
       );
-      const names =
-        c.mode === "hub" ? ["kioku-memory", "kioku-curate"] : ["kioku-memory"];
+      requireThat(
+        c.mode === "hub",
+        "LEADER_REQUIRED",
+        "Only Leader curation uses a Skill. Use workspace attach for file access.",
+      );
+      const names = ["kioku-curate"];
       const output = await run("npx", [
         "-y",
         "skills@1.7.2",
@@ -283,75 +312,9 @@ try {
         source,
         skills: names,
         output,
-        contextBinding: {
-          KIOKU_HOME: home,
-          instruction:
-            "Bind KIOKU_AGENT_ID or pass --agent when multiple instances exist.",
-        },
+        instruction:
+          "Supply the Leader workspace paths to the curation task. No Agent identity binding is required.",
       };
-    }
-    if (cmd === "backup") {
-      const credentials = async () => {
-        requireThat(
-          c.mode === "hub",
-          "HUB_REQUIRED",
-          "Cloud credentials belong on the Hub.",
-        );
-        requireThat(
-          process.stdin.isTTY && !json,
-          "INTERACTIVE_REQUIRED",
-          "Run backup credentials in a terminal, or supply an existing --config file.",
-        );
-        const binary = await dependency(
-          "rclone",
-          home,
-          process.env.KIOKU_RCLONE,
-        );
-        const path = resolve(home, "rclone.conf");
-        await new Promise<void>((done, reject) => {
-          const child = spawn(binary, ["config", "--config", path], {
-            stdio: "inherit",
-          });
-          child.once("error", reject);
-          child.once("exit", (code) =>
-            code === 0
-              ? done()
-              : reject(
-                  new Failure(
-                    "CONFIG_FAILED",
-                    "rclone credential setup did not complete.",
-                  ),
-                ),
-          );
-        });
-        return path;
-      };
-      if (sub === "credentials") return { configPath: await credentials() };
-      if (sub === "configure") {
-        const target = await need(
-          "target",
-          "rclone target (remote:bucket/prefix or local directory)",
-        );
-        let configPath = value("config");
-        if (!configPath && /^[a-zA-Z][a-zA-Z0-9_-]*:/.test(target)) {
-          configPath = resolve(home, "rclone.conf");
-          if (!(await exists(configPath))) configPath = await credentials();
-        }
-        const result = await configureBackup(home, c, target, configPath);
-        if (c.serviceMode === "native") await start(c, home);
-        return result;
-      }
-      if (sub === "run") return backupRun(home, c);
-      if (sub === "networks") return listNetworks(c);
-      if (sub === "list") return listBackups(c, value("network"));
-      if (sub === "restore")
-        return restore(
-          home,
-          c,
-          await need("snapshot", "Snapshot ID"),
-          await need("target", "New restore directory"),
-          value("network"),
-        );
     }
     if (cmd === "status")
       return {
@@ -359,9 +322,9 @@ try {
         mode: c.mode,
         root: c.root,
         agents: c.agents,
+        workspaces: c.workspaces || [],
         sync: await syncStatus(c),
-        backup: backupHealth(c),
-        curation: await lastCuration(home),
+        curation: await lastCuration(c),
         serviceMode: c.serviceMode,
       };
     if (cmd === "doctor") {

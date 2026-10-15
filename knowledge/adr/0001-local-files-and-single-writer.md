@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: partially superseded by ADR-0004
 date: 2026-10-15
 ---
 
@@ -10,3 +10,5 @@ Agent 分布在不同机器，必须能在断网时继续读写知识，并保�
 工作同步采用最终一致性。同步、备份和知识提炼分别承担传播更新、历史恢复和语义整理的职责；提炼不删除原文，公共知识需要保留来源。迁移 Agent 时先停用旧写入节点。
 
 完整范围见 [设计记录](../2026-10-15-design-record.md)。
+
+当前接入、权限和历史保留规则以 [ADR 0004](0004-workspace-directories-and-current-state.md) 为准。

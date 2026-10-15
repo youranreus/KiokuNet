@@ -15,6 +15,7 @@ import {
   sha,
   rawPath,
 } from "./core.js";
+import { detachWorkspace } from "./workspace.js";
 import { reconcile } from "./sync.js";
 import { copyVerified, FileEntry } from "./files.js";
 import { hubOnly, invite } from "./network.js";
@@ -26,6 +27,10 @@ export async function retire(home: string, c: Config, agentId: string) {
     "INVALID_AGENT",
     "Only a registered non-Leader Agent can be retired.",
   );
+  for (const w of [...(c.workspaces || [])].filter(
+    (w) => w.sourceId === agentId,
+  ))
+    await detachWorkspace(home, c, w.raw);
   a.active = false;
   for (const invitation of Object.values(c.invitations))
     if (invitation.envelope.payload.agentId === agentId)
@@ -46,6 +51,10 @@ export async function revoke(home: string, c: Config, deviceId: string) {
   hubOnly(c);
   const peer = c.peers.find((p) => p.deviceId === deviceId);
   requireThat(peer, "UNKNOWN_DEVICE", "Device is not registered.");
+  for (const w of [...(c.workspaces || [])].filter((w) =>
+    c.agents.some((a) => a.id === w.sourceId && a.deviceId === deviceId),
+  ))
+    await detachWorkspace(home, c, w.raw);
   peer.revoked = true;
   for (const a of c.agents.filter((a) => a.deviceId === deviceId)) {
     a.active = false;

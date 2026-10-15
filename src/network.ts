@@ -36,7 +36,6 @@ export interface InitOptions {
 }
 async function layout(c: Config, home: string) {
   await mkdir(join(c.root, "shared"), { recursive: true });
-  await mkdir(join(home, "curation"), { recursive: true, mode: 0o700 });
   if (c.mode === "hub") {
     for (const name of ["profile", "projects", "topics"])
       await mkdir(join(c.root, "shared", name), { recursive: true });

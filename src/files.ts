@@ -50,7 +50,7 @@ export async function inventory(
     requireThat(
       !s.isSymbolicLink(),
       "UNSAFE_FILE",
-      `Symlinks are not included in snapshots: ${path}`,
+      `Symlinks are not included in migration bundles: ${path}`,
     );
     if (s.isDirectory()) result.push(...(await inventory(root, path)));
     else {
@@ -75,7 +75,7 @@ export async function copyVerified(
   requireThat(
     JSON.stringify(before) === JSON.stringify(after),
     "SOURCE_CHANGED",
-    "Knowledge changed during snapshot creation; retry when writes settle.",
+    "Knowledge changed during migration copy; retry when writes settle.",
   );
   return before;
 }
@@ -109,12 +109,12 @@ export async function verifyFiles(
     JSON.stringify(actual.sort(sort)) ===
       JSON.stringify([...entries].sort(sort)),
     "INTEGRITY_FAILED",
-    "Snapshot files do not match their manifest.",
+    "Migration files do not match their manifest.",
   );
 }
 
-// Immutable files allow a safe retry: existing files must be an exact subset,
-// and each missing file is published atomically without replacing any history.
+// An interrupted migration can resume only while its destination still matches
+// the transferred bundle. Publish missing files without replacing user edits.
 export async function seedRaw(
   source: string,
   target: string,
@@ -129,7 +129,7 @@ export async function seedRaw(
       return e && e.sha256 === f.sha256 && e.size === f.size;
     }),
     "SEED_TARGET_CONFLICT",
-    "Existing Raw differs from migration history; no files were replaced.",
+    "Existing Raw differs from the migration bundle; no files were replaced.",
   );
   await mkdir(dirname(target), { recursive: true });
   const stage = await mkdtemp(join(dirname(target), ".kioku-seed-"));

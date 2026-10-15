@@ -17,7 +17,7 @@
     "knowledge"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
     "test:integration": "npm run build && node --test test/integration/*.test.mjs",

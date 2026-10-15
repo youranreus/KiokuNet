@@ -1,5 +1,7 @@
 # KiokuNet 首版 CLI 草案
 
+> 本文保留首版历史背景；当前目录接入、权限和无历史保留的决策以 [ADR 0004](adr/0004-workspace-directories-and-current-state.md) 和 [使用指南](usage.md) 为准。
+
 > 历史设计记录：CLI 已于同日实现，当前可执行参数见 [README](../README.md)，验证结果见 [实现记录](implementation.md)。下文保留设计阶段原文。
 
 截至 2026-10-15，命令职责来自已确认的设计讨论；`kioku` 命令名、子命令和参数是待实现草案，不能作为可用软件执行。最终决策见 [设计记录](2026-10-15-design-record.md)，术语见 [GLOSSARY](GLOSSARY.md)。

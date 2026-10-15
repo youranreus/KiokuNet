@@ -70,7 +70,7 @@ npm run release:tags
 4. 再次检查源代码和远端状态，创建/推送本次 tag。
 5. 创建或复用草稿，上传缺失附件，重新下载验证；全部一致后公开。
 
-集成测试使用真实 Syncthing/rclone，需要本机可监听临时端口。依赖准备可能访问官方发布源；首次运行需要网络。macOS 原生服务和 Skill 网络安装测试仍由各自的 `KIOKU_TEST_*` 开关控制。
+集成测试使用真实 Syncthing，需要本机可监听临时端口。依赖准备可能访问官方发布源；首次运行需要网络。macOS 原生服务和 Skill 网络安装测试仍由各自的 `KIOKU_TEST_*` 开关控制。
 
 本地产物位于 `.release/v<version>/<commit>/`，已加入 `.gitignore`：
 

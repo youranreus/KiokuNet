@@ -1,5 +1,19 @@
 # KiokuNet 0.1.0 实现与验收
 
+> 本文保留首版历史背景；当前目录接入、权限和无历史保留的决策以 [ADR 0004](adr/0004-workspace-directories-and-current-state.md) 和 [使用指南](usage.md) 为准。
+
+## 工作区目录接入实现（2026-10-16）
+
+本轮以 `ab09798` 为基线实现 ADR 0004：增加 workspace attach/detach/list/check，使用独立系统账号验证源目录、父目录及私有配置的权限；Leader 保留提炼 Skill，普通 Agent 直接操作文件。移除历史备份、恢复及旧文档保存，现有备份数据不做清理。完整使用和升级步骤见 [使用指南](usage.md)。
+
+验证环境为 macOS arm64，执行 `KIOKU_TEST_NATIVE=1 KIOKU_TEST_SKILLS=1 node --test test/*.test.mjs test/integration/*.test.mjs`：**21 项，20 通过、0 失败、1 跳过**。通过项包括真实 Syncthing 同步、临时 macOS 后台服务、实际 Skill 分发、目录映射幂等与冲突保护、解除接入保留数据，以及 Raw 控制文件符号链接/硬链接越权写入回归测试。TypeScript、Prettier、diff 空白检查通过。
+
+跳过项是清空附加组后切换 nobody/daemon 系统账号进行的实际读写测试，本机没有非交互 root 权限。代码包含此用例，但本轮不声称已完成跨账号实机验收；应在隔离的 root 测试环境及实际运行器中验证。
+
+审查结果：Standards 0 项；Spec 初审及复核共 4 项，均已修复，剩余 0 项。修复了控制文件链接导致的高权限代理写入、校验期间入口被占用却报告成功、已有同步进程未采用新 umask，以及非 root 基础设施缺少安全替换控制文件所需目录写权限。
+
+## 首版历史实现
+
 2026-10-15。设计基线为 `d9c31e8`；首版实现提交 `59e33d3`，之后补充恢复、迁移、后台服务与安装验证。源代码与操作入口见 [README](../README.md)。
 
 ## 已实现范围

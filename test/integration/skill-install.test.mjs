@@ -49,17 +49,14 @@ test(
           "project",
         ]);
         assert.equal(installed.ok, true, JSON.stringify(installed));
-        assert.deepEqual(installed.data.skills, [
-          "kioku-memory",
-          "kioku-curate",
-        ]);
+        assert.deepEqual(installed.data.skills, ["kioku-curate"]);
       }
-      for (const skill of ["kioku-memory", "kioku-curate"]) {
+      for (const skill of ["kioku-curate"]) {
         const installed = await readFile(
           join(d, ".agents", "skills", skill, "SKILL.md"),
           "utf8",
         );
-        assert.match(installed, /kioku context/);
+        assert.match(installed, /allRaw/);
         assert.ok(!installed.includes(d));
         const hermes = await readFile(
           join(d, ".hermes", "skills", skill, "SKILL.md"),

@@ -168,6 +168,14 @@ export interface Receipt {
   deviceId: string;
   publicKey: string;
 }
+export interface Workspace {
+  sourceId: string;
+  user: string;
+  uid: number;
+  raw: string;
+  shared: string;
+  allRaw?: string;
+}
 export interface Config {
   version: 1;
   networkId: string;
@@ -192,15 +200,7 @@ export interface Config {
     guiPort: number;
     listenPort: number;
   };
-  backup?: {
-    target: string;
-    rclone: string;
-    configPath?: string;
-    retentionDays: number;
-    lastSuccess?: string;
-    lastRestore?: string;
-    lastError?: string;
-  };
+  workspaces?: Workspace[];
 }
 export async function load(home: string): Promise<Config> {
   const file = join(home, "config.json");
@@ -247,7 +247,10 @@ export function context(c: Config, home: string, explicit?: string) {
     raw: rawPath(c, a.id),
     shared: join(c.root, "shared"),
     ...(a.role === "leader"
-      ? { allRaw: join(c.root, "agents"), progress: join(home, "curation") }
+      ? {
+          allRaw: join(c.root, "agents"),
+          progress: join(rawPath(c, a.id), ".kioku-curation"),
+        }
       : {}),
   };
 }

@@ -73,7 +73,7 @@ async function download(url: string): Promise<Buffer> {
   return Buffer.from(await r.arrayBuffer());
 }
 export async function dependency(
-  name: "syncthing" | "rclone",
+  name: "syncthing",
   home: string,
   override?: string,
 ): Promise<string> {
@@ -93,27 +93,13 @@ export async function dependency(
   );
   const temp = await mkdtemp(join(tmpdir(), "kioku-dependency-"));
   try {
-    const version = name === "syncthing" ? "2.1.6" : "1.75.2";
-    const folder =
-      name === "syncthing"
-        ? `syncthing-${platform}-${arch}-v${version}`
-        : `rclone-v${version}-${platform === "macos" ? "osx" : platform}-${arch}`;
-    const extension =
-      name === "syncthing" && platform === "linux" ? "tar.gz" : "zip";
+    const version = "2.1.6";
+    const folder = `syncthing-${platform}-${arch}-v${version}`;
+    const extension = platform === "linux" ? "tar.gz" : "zip";
     const filename = `${folder}.${extension}`;
-    const base =
-      name === "syncthing"
-        ? `https://github.com/syncthing/syncthing/releases/download/v${version}`
-        : `https://downloads.rclone.org/v${version}`;
+    const base = `https://github.com/syncthing/syncthing/releases/download/v${version}`;
     const bytes = await download(`${base}/${filename}`);
-    let hash = syncHashes[`${platform}-${arch}`];
-    if (name === "rclone") {
-      const sums = (await download(`${base}/SHA256SUMS`)).toString();
-      hash = sums
-        .split("\n")
-        .map((s) => s.trim().split(/\s+/))
-        .find((p) => p[1]?.replace(/^\*/, "") === filename)?.[0];
-    }
+    const hash = syncHashes[`${platform}-${arch}`];
     requireThat(
       hash && sha(bytes) === hash,
       "CHECKSUM_FAILED",

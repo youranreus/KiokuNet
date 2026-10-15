@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: partially superseded by ADR-0004
 date: 2026-10-15
 ---
 
@@ -10,3 +10,5 @@ date: 2026-10-15
 不根据项目目录或运行器名称猜身份，也不建立全机可变的“当前 Agent”，以避免跨项目和并发运行时串写 Raw。显式参数与环境绑定冲突时必须报错；绑定只负责正确归属，不构成权限或设备认证。首版的本机 Agent 处于同一可信协作范围。
 
 解析细节见 [CLI 草案](../cli-draft.md)。
+
+当前接入、权限和历史保留规则以 [ADR 0004](0004-workspace-directories-and-current-state.md) 为准。

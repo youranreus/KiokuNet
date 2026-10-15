@@ -28,116 +28,81 @@
 
 你在不同机器、不同 Agent 里积累的背景、偏好和项目决策，值得被下一次工作继续使用。
 
-**KiokuNet 把这些知识保存在你自己的文件里。** 每个 Agent 维护独立的原始记录（Raw），通过固定地址的 Hub 汇集；Hermes Leader 自动整理成公共知识，再同步回各节点。用一个 CLI 完成接入，让现有 Agent 通过 Skill 读写记忆。
-
-## 为什么使用 KiokuNet
-
-- **文件就在本地。** Markdown 和原始附件可直接查看、搜索和备份；离线时仍可读取已有副本、记录新知识。
-- **身份跟着 Agent。** 一台机器支持多个长期实例，各自拥有 Raw，通过显式身份绑定避免混用。
-- **知识保留来源。** Leader 自动提炼、去重并保留冲突依据；更正以新记录补充，原始记录继续保留。
-- **接入现有工具。** CLI 配置依赖、文件同步和备份服务；`kioku-memory` / `kioku-curate` 接入现有 Agent，整理任务由 Hermes 调度。
+**KiokuNet 把知识保存在本地普通文件中，并把目录接到 Agent 工作区。** 自己的 Raw 可以自由编辑、重命名和删除；公共知识由 Leader 提炼后分发，普通 Agent 只读。文件位置由参数指定，普通读写不需要 Skill 或运行时身份绑定。
 
 ## 如何工作
 
 ```mermaid
 flowchart LR
-  A["Agent A"] -->|Raw 上传| H["Linux Hub<br/>汇集各来源 Raw"]
-  B["Agent B"] -->|Raw 上传| H
-  H --> L["Hermes Leader<br/>自动提炼"]
-  L --> S["公共知识 shared"]
-  S -->|shared 回传| A
-  S -->|shared 回传| B
-  H -.-> R["rclone 备份"]
-  S -.-> R
+  A[Agent 工作区] -->|可读写入口| R[自己的 Raw]
+  R -->|Syncthing| H[Hub 汇集来源]
+  H -->|只读| L[Leader 提炼]
+  L -->|写入| S[公共知识 shared]
+  S -->|同步并提供只读入口| A
 ```
 
-Raw 通过 **Syncthing** 汇集，公共知识由 Leader 写入并下发。CLI 管理身份、路径和基础设施；Hermes 负责运行与调度整理任务。每个 Raw 只由所属节点写入，公共知识只有 Leader 写入。
+每个来源目录只有一个写入节点，支持离线访问和最终一致同步。多个工作区可以链接同一来源目录。系统只维护当前文件，不提供历史保存、快照或恢复；来源删除不自动撤回已经提炼的公共知识。
 
 ## 安装
 
-需要 **Node.js ≥ 22.20** 和 npm。目标平台为 macOS / Linux（arm64、amd64）；Linux 原生后台服务使用 systemd。
-
-安装已发布版本，无需在目标机器编译：
+需要 Node.js ≥ 22.20、npm，macOS 或 Linux（arm64 / amd64）。当前源码安装：
 
 ```bash
-npm install -g https://github.com/youranreus/KiokuNet/releases/download/v0.1.0/kiokunet-0.1.0.tgz
+npm ci
+npm run build
+npm install -g .
 kioku --help
 ```
 
-[查看所有版本](https://github.com/youranreus/KiokuNet/releases) · [下载 SHA-256 校验文件](https://github.com/youranreus/KiokuNet/releases/download/v0.1.0/SHA256SUMS) · [校验与安装说明](knowledge/releasing.md#用户安装)
-
-CLI 会寻找或下载 Syncthing / rclone；解包需要 `unzip`，Linux 还需 `tar`。Node.js 需自行安装。目前通过 GitHub Release 分发，尚未发布到 npm registry。
+[已发布版本](https://github.com/youranreus/KiokuNet/releases) 可能仍是原有 Skill 接入方式；目录接入请使用包含本次改动的版本。CLI 自动寻找或下载并校验 Syncthing。
 
 ## 快速接入
 
-准备一台有固定可达地址的 Linux Hub。下面的 `192.0.2.10` 为示例，请替换为实际地址，并允许节点访问 Hub 的 **TCP 22000**。
-
-**1. 在 Hub 创建网络和邀请**
+同步服务与 Agent 使用不同系统账号。管理员先按 [权限准备](knowledge/usage.md#权限准备) 设置目录与账号，再建立工作区入口：
 
 ```bash
-kioku init --agent hermes-main --root "$HOME/kiokunet" --address 192.0.2.10:22000
-kioku invite --agent codex-mac --out /tmp/codex-mac.invite.json
+kioku workspace attach --home /var/lib/kioku-config \
+  --source /srv/kioku/agents/writer/raw \
+  --raw-path /work/project/memory \
+  --shared-path /work/project/knowledge \
+  --user agent-worker
+
+kioku workspace check --home /var/lib/kioku-config
+kioku workspace detach --home /var/lib/kioku-config \
+  --raw-path /work/project/memory
 ```
 
-**2. 将邀请传到本机，再执行接入**
+两个目标路径的父目录需已存在；已有不同内容时报错，相同映射重复执行成功。解除接入只移除登记的链接，源文件保留。接入命令由能管理这些目录的管理员或基础设施账号执行，Agent 进程实际使用 `--user` 指定的无特权系统账号。
 
-```bash
-kioku join --invite /tmp/codex-mac.invite.json \
-  --root "$HOME/kiokunet" --out /tmp/codex-mac.receipt.json
-kioku skill install --runtime codex
-```
+**符号链接本身没有只读能力。** CLI 验证源目录、父目录、私有配置和系统账号权限，同账号运行、权限可绕过或存在无法验证的 ACL 时拒绝接入。当前提供独立 Unix 账号后端，不按 Agent 品牌设兼容名单；容器中的 UID 映射或额外沙箱需自行保证一致，不能把宿主机一次检查当成任意运行环境认证。
 
-**3. 将回执传回 Hub，完成登记并安装 Leader Skill**
-
-```bash
-kioku enroll --receipt /tmp/codex-mac.receipt.json
-kioku skill install --runtime hermes-agent
-kioku status --json
-```
-
-两个文件通过可信渠道传递。`join` 成功后仍需 Hub 执行 `enroll`；文件是否同步完成以实际连接和文件夹状态为准。Linux 若提示 linger 权限不足，按 [完整接入指南](knowledge/usage.md#首次接入) 完成服务常驻配置。
-
-**4. 在 Hermes 配置整理任务**
-
-将下面的任务说明交给 Hub 上能加载 `kioku-curate` 的 Hermes profile，先手动验证，再配置定时执行：
-
-> 使用 kioku-curate，身份为 hermes-main。先执行 `kioku context --agent hermes-main --json`，按返回路径增量整理 Raw，保留来源和不确定性，自动更新公共知识并保存进度，无需人工确认。
-
-多个本地 Agent 共用一套配置时，为各自执行环境绑定 `KIOKU_AGENT_ID`，或在查询时传 `--agent`。身份和机器路径独立保存在本机配置中，不写入 Skill。详见 [Agent 与 Skill](knowledge/usage.md#agent-与-skill)。
+Leader 接入额外指定 `--all-raw-path`，可以写 shared、只读其他 Raw。Leader 保留 `kioku-curate` Skill；运行和定时任务仍由已有运行器管理。普通 Agent 不安装 memory Skill，不自动修改提示词或工作区规则。
 
 ## 项目状态
 
-**首版已发布，首次真实知识流转验收通过。** Linux Hub 与 Mac 已跑通 Raw 上传、Hermes 定时提炼和 shared 回传；云备份与长期运行验证仍待完成。
+本次改动提供目录接入和权限前置检查，替换原有普通 Agent Skill 接入。原有配对、同步和迁移管理命令保留兼容；其中的 Agent ID 是内部来源标识，日常文件操作无需使用。
 
-| 已验证 | 待完成 |
-| --- | --- |
-| 邀请与回执登记、同机多身份、迁移与撤销 | Linux 服务重启与退出登录后的持续运行 |
-| Linux Hub 与 Mac 真实 Raw / shared 同步 | 附件、冲突与更正的真实部署验收 |
-| rclone 本地后端快照、损坏检测与跨网络恢复 | 真实云存储备份与恢复演练 |
-| macOS 后台服务、Codex / Hermes Skill 分发及实际 Hermes 定时提炼 | 持续端到端时效与长期稳定性验证 |
-
-查看 [首次真实部署验收](knowledge/2026-10-15-linux-hub-e2e-acceptance.md) 与 [实现及自动化测试](knowledge/implementation.md)。当前按个人可信协作场景设计；身份与同步方向约定不构成同一系统用户下的强权限隔离。备份需要单独配置后才生效。
+原先 Linux Hub ↔ Mac 的实际同步验证见 [历史验收](knowledge/2026-10-15-linux-hub-e2e-acceptance.md)。新的系统账号隔离需要在实际部署环境中验证；本地测试与其限制见 [使用指南](knowledge/usage.md#开发验证)。
 
 ## 文档导航
 
-| 我想了解 | 从这里开始 |
+| 内容 | 文档 |
 | --- | --- |
-| 完整安装、首次接入与身份绑定 | [使用与运维指南](knowledge/usage.md) |
-| 备份、灾难恢复与换机迁移 | [备份与恢复](knowledge/usage.md#备份与灾难恢复) · [迁移与撤销](knowledge/usage.md#身份迁移与撤销) |
-| Agent 如何读取和记录知识 | [kioku-memory](skills/kioku-memory/SKILL.md) |
-| Leader 如何提炼公共知识 | [kioku-curate](skills/kioku-curate/SKILL.md) |
-| 架构取舍和名词含义 | [架构决策](knowledge/adr/README.md) · [术语表](knowledge/GLOSSARY.md) |
-| 如何构建、测试与发布 | [开发说明](knowledge/usage.md#运维与开发) · [发布指南](knowledge/releasing.md) |
+| 配对、权限准备、接入和升级 | [使用与运维指南](knowledge/usage.md) |
+| 目录归属、权限和取消历史功能的决策 | [ADR 0004](knowledge/adr/0004-workspace-directories-and-current-state.md) |
+| Leader 如何提炼当前文件 | [kioku-curate](skills/kioku-curate/SKILL.md) |
+| 领域术语 | [术语表](knowledge/GLOSSARY.md) |
+| 构建与发布 | [发布指南](knowledge/releasing.md) |
 
 ## 参与开发
 
-欢迎通过 [Issues](https://github.com/youranreus/KiokuNet/issues) 提交问题和建议。报告问题时附上系统、Node.js 版本、复现步骤和去除敏感信息的错误输出。
-
 ```bash
-git clone https://github.com/youranreus/KiokuNet.git
-cd KiokuNet
 npm ci
-npm test
+npm run test:prepare
+npm run build
+node --test test/*.test.mjs test/integration/*.test.mjs
+npm run typecheck
+npm run format:check
 ```
 
-涉及同步或备份的改动，再执行 `npm run test:prepare` 和 `npm run test:integration`。集成测试需要本地端口权限；完整命令和可选测试见 [开发说明](knowledge/usage.md#运维与开发)。
+测试使用临时目录，集成测试需要本地端口权限。系统账号实际读写测试需要 root；普通用户执行时会明确跳过。[反馈问题](https://github.com/youranreus/KiokuNet/issues) 时请附系统、版本和去除敏感信息的复现步骤。

@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: partially superseded by ADR-0004
 date: 2026-10-15
 ---
 
@@ -10,3 +10,5 @@ date: 2026-10-15
 此前提议的“CLI 定时调用 Hermes 并自动重试”已被用户明确替代。即使 Hermes 提供非交互接口，KiokuNet 首版也不据此建立执行器；知识流转时效由同步与 Hermes 任务共同决定。Skill 与本机配置分离，更新 Skill 不应重写本地身份和路径。
 
 完整范围见 [设计记录](../2026-10-15-design-record.md)。
+
+当前接入、权限和历史保留规则以 [ADR 0004](0004-workspace-directories-and-current-state.md) 为准。

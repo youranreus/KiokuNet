@@ -2,11 +2,16 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { createConnection } from "node:net";
 import { readFile, stat } from "node:fs/promises";
-import { Config, exists, readJson } from "./core.js";
+import { Config, exists, readJson, rawPath } from "./core.js";
 import { syncStatus, api } from "./sync.js";
+import { checkWorkspaces } from "./workspace.js";
 import { findBinary, run } from "./process.js";
-export async function lastCuration(home: string): Promise<unknown> {
-  const p = join(home, "curation", "last-run.json");
+export async function lastCuration(c: Config): Promise<unknown> {
+  const leader = c.agents.find(
+    (a) => a.local && a.active && a.role === "leader",
+  );
+  if (!leader) return null;
+  const p = join(rawPath(c, leader.id), ".kioku-curation", "last-run.json");
   if (!(await exists(p))) return null;
   try {
     return await readJson(p);
@@ -32,20 +37,6 @@ function reachable(address: string): Promise<boolean> {
     s.once("error", () => finish(false));
     s.once("connect", () => finish(true));
   });
-}
-export function backupHealth(c: Config) {
-  const b = c.backup;
-  return {
-    configured: Boolean(b),
-    lastSuccess: b?.lastSuccess ?? null,
-    lastRestore: b?.lastRestore ?? null,
-    lastError: b?.lastError ?? null,
-    fresh: Boolean(
-      b?.lastSuccess && Date.now() - Date.parse(b.lastSuccess) <= 86400_000,
-    ),
-    verifiedRecovery: Boolean(b?.lastRestore),
-    schedulingMode: c.serviceMode,
-  };
 }
 export async function diagnose(c: Config, home: string, runtime?: string) {
   const checks: { name: string; ok: boolean; detail: string }[] = [];
@@ -94,20 +85,6 @@ export async function diagnose(c: Config, home: string, runtime?: string) {
       "A disconnected peer may still be awaiting Hub enrollment.",
     );
   }
-  if (c.mode === "hub") {
-    const backup = backupHealth(c);
-    check("backup-configured", backup.configured, "Run backup configure.");
-    check(
-      "backup-fresh",
-      backup.fresh && !backup.lastError,
-      "A verified snapshot must have succeeded within 24 hours.",
-    );
-    check(
-      "recovery-drill",
-      backup.verifiedRecovery,
-      "Restore a snapshot into a new directory.",
-    );
-  }
   const privateMode = (await stat(join(home, "config.json"))).mode & 0o077;
   check(
     "private-config",
@@ -119,9 +96,7 @@ export async function diagnose(c: Config, home: string, runtime?: string) {
       runtime === "hermes-agent"
         ? join(process.env.HERMES_HOME || join(homedir(), ".hermes"), "skills")
         : join(homedir(), ".agents", "skills");
-    for (const name of c.mode === "hub"
-      ? ["kioku-memory", "kioku-curate"]
-      : ["kioku-memory"]) {
+    for (const name of c.mode === "hub" ? ["kioku-curate"] : []) {
       const local = join(
         process.cwd(),
         runtime === "hermes-agent" ? ".hermes" : ".agents",
@@ -157,10 +132,17 @@ export async function diagnose(c: Config, home: string, runtime?: string) {
       );
     }
   }
+  const workspaces = await checkWorkspaces(home, c);
+  for (const w of workspaces.checks)
+    check(
+      `workspace:${w.raw}`,
+      w.ok,
+      w.detail || "Permissions and links verified.",
+    );
   return {
     healthy: checks.every((c) => c.ok),
     checks,
-    curation: await lastCuration(home),
+    curation: await lastCuration(c),
     note: "Curation receipts are files, not live Hermes execution status. Hermes schedules and runs its own tasks.",
   };
 }

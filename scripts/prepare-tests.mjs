@@ -12,7 +12,7 @@ const result = JSON.parse(
 );
 if (!result.ok) throw new Error(JSON.stringify(result.error));
 await mkdir(resolve(".tools"), { recursive: true });
-for (const name of ["syncthing", "rclone"]) {
+for (const name of ["syncthing"]) {
   const target = resolve(join(".tools", name));
   if (resolve(result.data[name]) !== target)
     await copyFile(result.data[name], target);
