@@ -47,7 +47,7 @@ KIOKU_TEST_NATIVE=1 KIOKU_TEST_SKILLS=1 \
 
 另外执行 TypeScript 检查、Prettier 检查、两份 Skill 格式校验。测试使用临时目录；不会给真实 Hermes 创建任务或读写云账号。
 
-已在全新临时目录验证 CLI 从官方地址自动下载并校验 Syncthing 2.1.6 / rclone 1.75.2；npm tarball 安装后的 `kioku --help` 与打包 Skill 均通过冒烟验证。`test:prepare` 已验证可复用显式依赖。Linux 的服务文件已实现，但尚未在真实 Linux/systemd 上运行验收。
+已在全新临时目录验证 CLI 从官方地址自动下载并校验 Syncthing 2.1.6 / rclone 1.75.2；npm tarball 安装后的 `kioku --help` 与打包 Skill 均通过冒烟验证。`test:prepare` 已验证可复用显式依赖。Linux 服务的真实部署结果见下文，自动化测试数量仍为上述开发阶段记录。
 
 ## 审查与修复
 
@@ -69,20 +69,23 @@ KIOKU_TEST_NATIVE=1 KIOKU_TEST_SKILLS=1 \
 
 复核新增 1 项服务模式切换问题，也已修复：native→manual 时删除本工具 macOS LaunchAgent；Linux disable 并删除对应 user unit/timer。普通 `service stop` 只停止本次运行。
 
-两个轴的初审分别为 2 项和 4 项；复核新增 1 项。发现项均已处理；Linux 原生行为仍需实机验证。
+两个轴的初审分别为 2 项和 4 项；复核新增 1 项。发现项均已处理；后续实机部署与尚未覆盖的行为见下文。
 
 ## 首次真实部署验收
 
-尚需用户实际环境信息：Hub 固定 IP/用户及知识目录、Hermes 的 profile/执行环境、云存储目标与其凭据。无需把凭据发给助手，可在 Hub 的 `backup credentials` 向导中录入。
+**2026-10-15 已通过首次 Linux Hub ↔ Mac 端到端验收。** Hub 为 Debian 13，Hermes default profile 承载 `hermes-main`，每 5 分钟运行整理任务；Mac 以 `codex-mac` 通过邀请与回执加入。
 
-部署时按顺序完成：
+Hub 部署报告验证 systemd user service enabled/active、linger=yes 和真实 Skill 加载。Mac 实测验证 TLS 1.3 连接、Hub Raw 完成度 100%，并收到包含自身 Raw 记录 ID 与匹配 SHA-256 的公共文档；最终 Mac `doctor` 全部 10 项通过。网络受阻期间已创建的 Raw 在连接恢复后成功上传。全过程未在 Mac 直接修改 shared。
 
-1. 在 Linux 初始化 Hub，验证 linger、TCP 端口和重新登录/重启后后台服务。
-2. Mac 通过邀请/回执加入；断网写入 Raw，恢复连接后确认 Hub 收到原文件。
-3. 把两个 Skill 装到实际 Hermes profile，绑定 Leader；在 Hermes 创建定时整理任务。
-4. 使用一条真实 Markdown 记录、一次更正和一个附件验证提炼来源、去重、冲突保留及 shared 下发。
-5. 测量从本地 Raw 提交到另一节点可读 shared 的时间；五分钟是目标，当前没有真实模型闭环耗时数据。
-6. 配置真实云目标，完成一次备份与新目录恢复，检查下一次计划任务及 24 小时备份新鲜度。
+完整环境、时间线、来源哈希与网络故障诊断更正见 [首次真实部署验收](2026-10-15-linux-hub-e2e-acceptance.md)。
+
+后续仍需完成：
+
+1. Linux 真实重启和退出登录后的后台服务持续运行演练。
+2. CNAME → 源站域名解析结构配置与验证；本轮实测仍为直接 A 记录。
+3. 真实部署中的附件、冲突与后续 correction 提炼结果验收。
+4. 持续测量从 Raw 创建到另一节点可读 shared 的耗时，补充断网重连与长期稳定性验证；本轮不构成五分钟时效承诺。
+5. 配置真实云目标，完成备份、新目录恢复及计划任务验证。凭据在 Hub 本机录入，不进入知识库。本轮 Hub 的三个备份检查未通过符合未配置备份的范围。
 
 注意边界：
 

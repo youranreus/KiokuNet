@@ -107,16 +107,16 @@ kioku status --json
 
 ## 项目状态
 
-**首版已发布，正在验证真实部署。** 当前验证集中在 macOS 本机环境；Linux Hub、真实云备份和 Hermes 定时整理闭环仍待实机验收。
+**首版已发布，首次真实知识流转验收通过。** Linux Hub 与 Mac 已跑通 Raw 上传、Hermes 定时提炼和 shared 回传；云备份与长期运行验证仍待完成。
 
 | 已验证 | 待完成 |
 | --- | --- |
 | 邀请与回执登记、同机多身份、迁移与撤销 | Linux 服务重启与退出登录后的持续运行 |
-| 真实 Syncthing 双端 Raw / shared 同步 | 实际 Hermes profile 的增量提炼与定时执行 |
+| Linux Hub 与 Mac 真实 Raw / shared 同步 | 附件、冲突与更正的真实部署验收 |
 | rclone 本地后端快照、损坏检测与跨网络恢复 | 真实云存储备份与恢复演练 |
-| macOS 后台服务、Codex / Hermes Skill 分发 | 多机器端到端时效验证 |
+| macOS 后台服务、Codex / Hermes Skill 分发及实际 Hermes 定时提炼 | 持续端到端时效与长期稳定性验证 |
 
-查看 [详细验收记录](knowledge/implementation.md)。当前按个人可信协作场景设计；身份与同步方向约定不构成同一系统用户下的强权限隔离。备份需要单独配置后才生效。
+查看 [首次真实部署验收](knowledge/2026-10-15-linux-hub-e2e-acceptance.md) 与 [实现及自动化测试](knowledge/implementation.md)。当前按个人可信协作场景设计；身份与同步方向约定不构成同一系统用户下的强权限隔离。备份需要单独配置后才生效。
 
 ## 文档导航
 
