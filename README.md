@@ -2,7 +2,7 @@
 
 面向个人多 Agent 协作的文件式记忆网络。各 Agent 在本地维护独立 Raw，远端 Hermes Leader 自动提炼公共知识。CLI 配置身份、路径、配对、文件同步和备份；Hermes 自己执行和调度整理任务。
 
-**当前版本：0.1.0，本地可安装的首版实现。** 已验证 macOS 本机多进程同步、原生后台服务、邀请登记、身份迁移及 rclone 本地后端恢复。真实 Linux Hub、云存储和 Hermes 整理闭环仍需部署验收。尚未发布到 npm。
+**当前版本：[v0.1.0](https://github.com/youranreus/KiokuNet/releases/tag/v0.1.0)，已提供可安装的 GitHub Release。** 已验证 macOS 本机多进程同步、原生后台服务、邀请登记、身份迁移及 rclone 本地后端恢复。真实 Linux Hub、云存储和 Hermes 整理闭环仍需部署验收。尚未发布到 npm。
 
 ```mermaid
 flowchart LR

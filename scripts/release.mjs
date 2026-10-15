@@ -127,7 +127,17 @@ function readRelease(repo, tag) {
     /\(HTTP 404\)/.test(r.stderr),
     `Cannot inspect GitHub release: ${r.stderr || r.stdout}`,
   );
-  return undefined;
+  // GitHub may omit drafts from the by-tag endpoint even for their author.
+  // The authenticated release list includes drafts and supports retrying uploads.
+  const pages = JSON.parse(
+    command("gh", [
+      "api",
+      "--paginate",
+      "--slurp",
+      `repos/${repo}/releases?per_page=100`,
+    ]).stdout,
+  );
+  return pages.flat().find((release) => release.tag_name === tag);
 }
 async function verifyAssets(repo, tag, release, files, requireAll) {
   const directory = await mkdtemp(join(tmpdir(), "kioku-release-verify-"));

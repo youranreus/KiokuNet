@@ -2,7 +2,9 @@
 
 脚本：`scripts/release.mjs`。包名是 `kiokunet`，可执行命令是 `kioku`；发布 tag 固定为 `v<package.json.version>`。不发布到 npm registry。
 
-## 首次发布当前 0.1.0
+## 发布流程
+
+v0.1.0 已正式发布；后续发布先按下节更新版本并提交、推送，不移动已有 tag。
 
 在仓库根目录执行。需要 Node.js ≥22.20、npm、git、GitHub CLI，以及目标仓库的写权限。
 
@@ -86,7 +88,16 @@ npm run release -- --notes /绝对路径/release-notes.md
 
 复用已有 Release 时保留其说明；修改草稿说明可在 GitHub 上完成。已公开版本不会因为传入 `--draft` 而撤回。
 
-## 中断与重跑
+## 认证与中断重跑
+
+`GITHUB_TOKEN` / `GH_TOKEN` 环境变量会优先于本机登录。如果 `gh auth status` 明确报告环境令牌失效，而钥匙串中的目标账号有效，可仅在本次进程中排除失效环境变量：
+
+```bash
+env -u GITHUB_TOKEN -u GH_TOKEN npm run release
+```
+
+脚本不会自动忽略指定凭据或改写全局认证配置。GitHub 按 tag 查询可能不返回草稿；脚本会在明确的 404 后查询当前账号可见的发布列表，识别已有草稿并继续。
+
 
 运行中以 `.git/kiokunet-release.lock`（实际位置由 Git 决定）互斥。正常结束或可捕获错误会释放锁；强制终止后请先确认没有运行中的发布进程，再人工移除遗留锁。
 

@@ -62,12 +62,13 @@ const save=()=>fs.writeFileSync(process.env.TEST_STATE,JSON.stringify(s));
 if(a[0]==='auth'||a[0]==='repo'){console.log('{}');process.exit(0);}
 if(a[0]==='api'){
  if(s.apiFailure){console.error('gh: unavailable (HTTP 503)');process.exit(1);}
- if(!s.release){console.error('gh: Not Found (HTTP 404)');process.exit(1);}
+ if(a.some(x=>x.endsWith('/releases?per_page=100'))){console.log(JSON.stringify([s.release?[s.release]:[]]));process.exit(0);}
+ if(!s.release||(s.hideDraftByTag&&s.release.draft)){console.error('gh: Not Found (HTTP 404)');process.exit(1);}
  console.log(JSON.stringify(s.release));process.exit(0);
 }
 if(a[1]==='create'){
  if(s.release){console.error('exists');process.exit(1);}
- s.release={draft:a.includes('--draft'),prerelease:a.includes('--prerelease'),assets:[],html_url:'https://github.com/test/kiokunet/releases/tag/v0.1.0'};save();process.exit(0);
+ s.release={tag_name:'v0.1.0',draft:a.includes('--draft'),prerelease:a.includes('--prerelease'),assets:[],html_url:'https://github.com/test/kiokunet/releases/tag/v0.1.0'};save();process.exit(0);
 }
 if(a[1]==='upload'){
  for(const f of a.slice(3,a.indexOf('--repo'))){
@@ -265,6 +266,22 @@ test("release refuses multiple push destinations before creating tags", async ()
     assert.equal(r.status, 1);
     assert.match(r.stderr, /exactly one push URL/);
     assert.equal(f.git("tag", "--list"), "");
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("drafts omitted by the tag endpoint are found through the release list", async () => {
+  const f = await fixture();
+  try {
+    await f.update({ hideDraftByTag: true });
+    const draft = f.run("--draft");
+    assert.equal(draft.status, 0, draft.stderr);
+    assert.equal((await f.read()).release.assets.length, 2);
+    assert.equal((await f.read()).release.draft, true);
+    const published = f.run();
+    assert.equal(published.status, 0, published.stderr);
+    assert.equal((await f.read()).release.draft, false);
   } finally {
     await f.cleanup();
   }
