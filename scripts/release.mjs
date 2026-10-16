@@ -8,16 +8,25 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const registry = "https://registry.npmjs.org/";
+const packageName = "@reus-able/kioku-net";
+// Scope-specific npm configuration takes precedence over the default registry.
+const registryArgs = [
+  "--registry",
+  registry,
+  `--@reus-able:registry=${registry}`,
+];
 const help = `Usage: npm run release -- [--dry-run] [--draft] [--notes FILE]
 
 Release the committed package.json version from a clean master branch.
 Requires master to match origin/master, Node >=22.20, npm, git and authenticated gh.
 Creates/reuses vVERSION at HEAD, pushes only that tag, uploads the npm tarball
-and SHA256SUMS to a draft, verifies downloads, then publishes unless --draft.
+and SHA256SUMS to a draft, verifies downloads, publishes the same tarball to npm,
+then publishes GitHub unless --draft. Stable versions use latest; prereleases use next.
 Existing tags/assets are never overwritten. Rerun after a partial failure.
 
---dry-run  Read-only preflight and plan; no build, tag, push or GitHub writes.
---draft    Upload and verify assets, keeping the release as a draft.
+--dry-run  Read-only Git preflight and plan; no build, registry access or writes.
+--draft    Upload and verify GitHub assets; do not access or publish to npm.
 --notes    UTF-8 release notes file; otherwise generate notes with install steps.
 
 Bump first: npm run release:version -- patch (or minor, major, explicit version).
@@ -139,6 +148,66 @@ function readRelease(repo, tag) {
   );
   return pages.flat().find((release) => release.tag_name === tag);
 }
+function readNpmVersion(spec) {
+  const r = command(
+    "npm",
+    ["view", spec, "--json", ...registryArgs, "--prefer-online"],
+    { allowFailure: true },
+  );
+  let metadata;
+  try {
+    metadata = JSON.parse(r.stdout);
+  } catch {
+    throw new Error(
+      `Cannot inspect npm version ${spec}: ${r.stderr || r.stdout}`,
+    );
+  }
+  if (r.status !== 0 && metadata?.error?.code === "E404") return undefined;
+  check(
+    r.status === 0 && metadata && !metadata.error,
+    `Cannot inspect npm version ${spec}: ${r.stderr || r.stdout}`,
+  );
+  check(
+    `${metadata.name}@${metadata.version}` === spec && metadata.dist?.integrity,
+    `Invalid npm metadata for ${spec}; expected an exact version with integrity.`,
+  );
+  return metadata;
+}
+function verifyNpmVersion(metadata, integrity) {
+  check(
+    metadata.dist.integrity === integrity,
+    "Existing npm package differs from this build. It will not be overwritten; choose a new version.",
+  );
+}
+function publishNpm(spec, packageFile, integrity, npmTag) {
+  // Re-read immediately before publication, including when resuming a partial release.
+  let metadata = readNpmVersion(spec);
+  if (!metadata) {
+    command(
+      "npm",
+      [
+        "publish",
+        packageFile,
+        ...registryArgs,
+        "--access",
+        "public",
+        "--tag",
+        npmTag,
+        "--ignore-scripts",
+        "--dry-run=false",
+      ],
+      // Inherit the terminal for npm's interactive authentication / 2FA challenge.
+      { visible: true },
+    );
+    metadata = readNpmVersion(spec);
+    check(
+      metadata,
+      "Unable to confirm npm publication. Rerun to inspect/resume.",
+    );
+  }
+  verifyNpmVersion(metadata, integrity);
+  console.log(`npm verified: ${spec} (${registry})`);
+}
 async function verifyAssets(repo, tag, release, files, requireAll) {
   const directory = await mkdtemp(join(tmpdir(), "kioku-release-verify-"));
   const missing = [];
@@ -209,8 +278,8 @@ async function main() {
     await readFile(join(root, "package-lock.json"), "utf8"),
   );
   check(
-    pkg.name === "kiokunet" && semver.test(pkg.version),
-    "Expected package kiokunet with a valid version (no build metadata).",
+    pkg.name === packageName && semver.test(pkg.version),
+    `Expected package ${packageName} with a valid version (no build metadata).`,
   );
   check(
     lock.version === pkg.version &&
@@ -219,6 +288,17 @@ async function main() {
   );
   const tag = `v${pkg.version}`,
     prerelease = pkg.version.includes("-");
+  const npmSpec = `${pkg.name}@${pkg.version}`,
+    npmTag = prerelease ? "next" : "latest";
+  const packageFilename = `${pkg.name.slice(1).replace("/", "-")}-${pkg.version}.tgz`;
+  check(pkg.private !== true, "Cannot release a private npm package.");
+  check(
+    !pkg.publishConfig ||
+      (pkg.publishConfig.registry === registry &&
+        pkg.publishConfig.access === "public" &&
+        pkg.publishConfig.tag === undefined),
+    "publishConfig must use the public npm registry/access without a fixed tag.",
+  );
   const fetchRepo = repository(git("remote", "get-url", "origin"));
   const pushUrls = git("remote", "get-url", "--all", "--push", "origin").split(
     "\n",
@@ -244,7 +324,8 @@ async function main() {
         localTag: state.local ? "reuse" : "create",
         remoteTag: state.remote.tag ? "reuse" : "push",
         release: opts.draft ? "draft" : prerelease ? "prerelease" : "public",
-        assets: [`kiokunet-${pkg.version}.tgz`, "SHA256SUMS"],
+        assets: [packageFilename, "SHA256SUMS"],
+        npm: { registry, package: npmSpec, tag: npmTag, publish: !opts.draft },
         dryRun: Boolean(opts["dry-run"]),
       },
       null,
@@ -276,6 +357,9 @@ async function main() {
       !release || release.prerelease === prerelease,
       "Existing release prerelease status differs from the package version.",
     );
+    const npmVersion = opts.draft ? undefined : readNpmVersion(npmSpec);
+    if (!opts.draft && !npmVersion)
+      command("npm", ["whoami", "--registry", registry]);
 
     const output = join(root, ".release", tag, head);
     await mkdir(output, { recursive: true });
@@ -293,12 +377,14 @@ async function main() {
       command("npm", ["pack", "--json", "--pack-destination", output]).stdout,
     );
     check(
-      packed.length === 1 &&
-        packed[0].filename === `kiokunet-${pkg.version}.tgz`,
+      packed.length === 1 && packed[0].filename === packageFilename,
       "Unexpected package output.",
     );
     const packageFile = join(output, packed[0].filename);
-    const checksum = `${hash(await readFile(packageFile))}  ${packed[0].filename}\n`;
+    const packageBytes = await readFile(packageFile);
+    const integrity = `sha512-${createHash("sha512").update(packageBytes).digest("base64")}`;
+    if (npmVersion) verifyNpmVersion(npmVersion, integrity);
+    const checksum = `${hash(packageBytes)}  ${packed[0].filename}\n`;
     await writeFile(join(output, "SHA256SUMS"), checksum);
     const files = await Promise.all(
       [packed[0].filename, "SHA256SUMS"].map(async (name) => ({
@@ -311,7 +397,7 @@ async function main() {
     await writeFile(
       notesFile,
       notes ??
-        `Commit: ${head}\n\nRequires Node.js >=22.20. Download the attached kiokunet-${pkg.version}.tgz and SHA256SUMS, then run:\n\n\`\`\`bash\nsha256sum -c SHA256SUMS\nnpm install -g ./kiokunet-${pkg.version}.tgz\nkioku --help\n\`\`\`\n\nOn macOS, use \`shasum -a 256 -c SHA256SUMS\`. Use the attached npm package; GitHub source archives do not contain the compiled CLI.\n`,
+        `Commit: ${head}\n\nRequires Node.js >=22.20. After publication, install from npm:\n\n\`\`\`bash\nnpm install -g ${npmSpec}\nkioku --help\n\`\`\`\n\nAlternatively, download the attached ${packageFilename} and SHA256SUMS, then run:\n\n\`\`\`bash\nsha256sum -c SHA256SUMS\nnpm install -g ./${packageFilename}\nkioku --help\n\`\`\`\n\nOn macOS, use \`shasum -a 256 -c SHA256SUMS\`. Use the attached npm package; GitHub source archives do not contain the compiled CLI.\n`,
     );
     sourceState(head);
     const current = tagState(tag, head);
@@ -364,6 +450,7 @@ async function main() {
     release = readRelease(repo, tag);
     check(release, "Release disappeared; rerun to inspect.");
     await verifyAssets(repo, tag, release, files, true);
+    if (!opts.draft) publishNpm(npmSpec, packageFile, integrity, npmTag);
     if (release.draft && !opts.draft)
       command("gh", ["release", "edit", tag, "--repo", repo, "--draft=false"]);
     const final = readRelease(repo, tag);

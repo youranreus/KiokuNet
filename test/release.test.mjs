@@ -16,7 +16,7 @@ import { createHash } from "node:crypto";
 
 const script = resolve("scripts/release.mjs");
 const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
-async function fixture() {
+async function fixture(version = "0.1.0") {
   const dir = await realpath(
     await mkdtemp(join(tmpdir(), "kioku-release-test-")),
   );
@@ -31,13 +31,13 @@ async function fixture() {
   await writeFile(join(root, ".gitignore"), ".release/\ndist/\n");
   await writeFile(
     join(root, "package.json"),
-    JSON.stringify({ name: "kiokunet", version: "0.1.0" }),
+    JSON.stringify({ name: "@reus-able/kioku-net", version }),
   );
   await writeFile(
     join(root, "package-lock.json"),
     JSON.stringify({
-      version: "0.1.0",
-      packages: { "": { version: "0.1.0" } },
+      version,
+      packages: { "": { version } },
     }),
   );
   await writeFile(state, JSON.stringify({ release: null, blobs: {} }));
@@ -50,15 +50,35 @@ async function fixture() {
   );
   // These are the external npm/GitHub boundaries, with persistent state for retry scenarios.
   const fake = `#!${process.execPath}
-const fs=require('node:fs'),path=require('node:path');
+const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto');
 const name=path.basename(process.argv[1]),a=process.argv.slice(2);
 fs.appendFileSync(process.env.TEST_LOG,JSON.stringify({name,args:a})+'\\n');
-if(name==='npm'){
- if(a[0]==='pack') {const filename='kiokunet-0.1.0.tgz';fs.writeFileSync(path.join(a[a.indexOf('--pack-destination')+1],filename),'compiled fixture package');console.log(JSON.stringify([{filename}]));}
- process.exit(0);
-}
 let s=JSON.parse(fs.readFileSync(process.env.TEST_STATE));
 const save=()=>fs.writeFileSync(process.env.TEST_STATE,JSON.stringify(s));
+const version=JSON.parse(fs.readFileSync('package.json')).version;
+if(name==='npm'){
+ if(a[0]==='view') {
+  if(s.npmFailure){console.log(JSON.stringify({error:{code:s.npmFailure}}));process.exit(1);}
+  if(!s.npm){console.log(JSON.stringify({error:{code:'E404'}}));process.exit(1);}
+  console.log(JSON.stringify(s.npm));process.exit(0);
+ }
+ if(a[0]==='whoami'){
+  if(s.npmAuthFailure){console.error('npm: ENEEDAUTH');process.exit(1);}
+  console.log('release-test');process.exit(0);
+ }
+ if(a[0]==='publish'){
+  if(s.npm)throw Error('Unexpected duplicate publish');
+  if(s.failPublishOnce){s.failPublishOnce=false;save();process.exit(1);}
+  const bytes=fs.readFileSync(a[1]);
+  s.npm={name:'@reus-able/kioku-net',version,dist:{integrity:'sha512-'+createHash('sha512').update(bytes).digest('base64')}};
+  s.npmBytes=bytes.toString('base64');s.npmTag=a[a.indexOf('--tag')+1];save();
+  if(s.failAfterPublishOnce){s.failAfterPublishOnce=false;save();process.exit(1);}
+  process.exit(0);
+ }
+ if(a[0]==='pack') {const filename='reus-able-kioku-net-'+version+'.tgz';fs.writeFileSync(path.join(a[a.indexOf('--pack-destination')+1],filename),'compiled fixture package');console.log(JSON.stringify([{filename}]));process.exit(0);}
+ if(a[0]==='run')process.exit(0);
+ throw Error('Unexpected npm command: '+a.join(' '));
+}
 if(a[0]==='auth'||a[0]==='repo'){console.log('{}');process.exit(0);}
 if(a[0]==='api'){
  if(s.apiFailure){console.error('gh: unavailable (HTTP 503)');process.exit(1);}
@@ -68,7 +88,7 @@ if(a[0]==='api'){
 }
 if(a[1]==='create'){
  if(s.release){console.error('exists');process.exit(1);}
- s.release={tag_name:'v0.1.0',draft:a.includes('--draft'),prerelease:a.includes('--prerelease'),assets:[],html_url:'https://github.com/test/kiokunet/releases/tag/v0.1.0'};save();process.exit(0);
+ s.release={tag_name:'v'+version,draft:a.includes('--draft'),prerelease:a.includes('--prerelease'),assets:[],html_url:'https://github.com/test/kiokunet/releases/tag/v'+version};save();process.exit(0);
 }
 if(a[1]==='upload'){
  for(const f of a.slice(3,a.indexOf('--repo'))){
@@ -80,7 +100,10 @@ if(a[1]==='upload'){
 if(a[1]==='download'){
  const n=a[a.indexOf('--pattern')+1];fs.writeFileSync(path.join(a[a.indexOf('--dir')+1],n),Buffer.from(s.blobs[n],'base64'));process.exit(0);
 }
-if(a[1]==='edit'){s.release.draft=false;save();process.exit(0);}
+if(a[1]==='edit'){
+ if(s.failEditOnce){s.failEditOnce=false;save();process.exit(1);}
+ s.release.draft=false;save();process.exit(0);
+}
 throw Error('Unexpected command: '+a.join(' '));
 `;
   for (const name of ["npm", "gh"])
@@ -126,6 +149,8 @@ throw Error('Unexpected command: '+a.join(' '));
         { cwd: root, env, encoding: "utf8", timeout: 30000 },
       ),
     read: async () => JSON.parse(await readFile(state, "utf8")),
+    commands: async () =>
+      (await readFile(log, "utf8")).trim().split("\n").map(JSON.parse),
     update: async (extra) =>
       writeFile(
         state,
@@ -144,6 +169,14 @@ test("release dry-run leaves local/remote tags and GitHub untouched, and rejects
     const r = f.run("--dry-run");
     assert.equal(r.status, 0, r.stderr);
     assert.equal(JSON.parse(r.stdout).tag, "v0.1.0");
+    assert.equal(
+      JSON.parse(r.stdout).npm.package,
+      "@reus-able/kioku-net@0.1.0",
+    );
+    assert.deepEqual(JSON.parse(r.stdout).assets, [
+      "reus-able-kioku-net-0.1.0.tgz",
+      "SHA256SUMS",
+    ]);
     assert.equal(f.git("tag", "--list"), "");
     assert.equal(f.git("ls-remote", "--tags", "origin"), "");
     await assert.rejects(readFile(f.log), { code: "ENOENT" });
@@ -168,22 +201,59 @@ test("release creates an annotated tag and verified assets; retries preserve pub
     );
     const first = await f.read();
     assert.equal(first.release.draft, false);
-    const bytes = Buffer.from(first.blobs["kiokunet-0.1.0.tgz"], "base64");
+    assert.equal(first.npmTag, "latest");
+    assert.equal(first.npmBytes, first.blobs["reus-able-kioku-net-0.1.0.tgz"]);
+    const bytes = Buffer.from(
+      first.blobs["reus-able-kioku-net-0.1.0.tgz"],
+      "base64",
+    );
     assert.equal(
       Buffer.from(first.blobs.SHA256SUMS, "base64").toString(),
-      `${createHash("sha256").update(bytes).digest("hex")}  kiokunet-0.1.0.tgz\n`,
+      `${createHash("sha256").update(bytes).digest("hex")}  reus-able-kioku-net-0.1.0.tgz\n`,
     );
     assert.equal(f.run().status, 0);
     assert.deepEqual((await f.read()).blobs, first.blobs);
+    const commands = await f.commands();
+    const publishes = commands.filter(
+      (c) => c.name === "npm" && c.args[0] === "publish",
+    );
+    assert.equal(publishes.length, 1);
+    const views = commands.filter(
+      (c) => c.name === "npm" && c.args[0] === "view",
+    );
+    assert.ok(views.length > 0);
+    assert.ok(
+      views.every(
+        (c) =>
+          c.args[1] === "@reus-able/kioku-net@0.1.0" &&
+          c.args.includes("--@reus-able:registry=https://registry.npmjs.org/"),
+      ),
+    );
+    assert.deepEqual(publishes[0].args.slice(2), [
+      "--registry",
+      "https://registry.npmjs.org/",
+      "--@reus-able:registry=https://registry.npmjs.org/",
+      "--access",
+      "public",
+      "--tag",
+      "latest",
+      "--ignore-scripts",
+      "--dry-run=false",
+    ]);
+    assert.ok(
+      commands.findIndex((c) => c === publishes[0]) <
+        commands.findIndex((c) => c.name === "gh" && c.args[1] === "edit"),
+    );
     const s = await f.read();
-    s.blobs["kiokunet-0.1.0.tgz"] = Buffer.from("tampered").toString("base64");
+    s.blobs["reus-able-kioku-net-0.1.0.tgz"] =
+      Buffer.from("tampered").toString("base64");
     await f.update(s);
     const conflict = f.run();
     assert.equal(conflict.status, 1);
     assert.match(conflict.stderr, /will not be overwritten/);
     assert.equal(
-      (await f.read()).blobs["kiokunet-0.1.0.tgz"],
-      s.blobs["kiokunet-0.1.0.tgz"],
+      (await f.read()).blobs["reus-able-kioku-net-0.1.0.tgz"],
+      s.blobs["reus-able-kioku-net-0.1.0.tgz"],
     );
   } finally {
     await f.cleanup();
@@ -197,10 +267,12 @@ test("interrupted upload stays a draft; rerun completes only missing assets and 
     assert.equal(f.run().status, 1);
     assert.equal((await f.read()).release.draft, true);
     assert.equal((await f.read()).release.assets.length, 1);
+    assert.equal((await f.read()).npm, undefined);
     const resumed = f.run("--draft");
     assert.equal(resumed.status, 0, resumed.stderr);
     assert.equal((await f.read()).release.draft, true);
     assert.equal((await f.read()).release.assets.length, 2);
+    assert.equal((await f.read()).npm, undefined);
     assert.equal(f.run().status, 0);
     assert.equal((await f.read()).release.draft, false);
   } finally {
@@ -286,3 +358,120 @@ test("drafts omitted by the tag endpoint are found through the release list", as
     await f.cleanup();
   }
 });
+
+test("draft does not access npm even when registry credentials are unavailable", async () => {
+  const f = await fixture();
+  try {
+    await f.update({ npmFailure: "E503", npmAuthFailure: true });
+    const result = f.run("--draft");
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal((await f.read()).release.draft, true);
+    assert.equal((await f.read()).npm, undefined);
+    assert.ok(
+      (await f.commands()).every(
+        (c) => c.name !== "npm" || ["run", "pack"].includes(c.args[0]),
+      ),
+    );
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("prereleases publish to next without using latest", async () => {
+  const f = await fixture("0.2.0-beta.1");
+  try {
+    const result = f.run();
+    assert.equal(result.status, 0, result.stderr);
+    const state = await f.read();
+    assert.equal(state.release.prerelease, true);
+    assert.equal(state.npm.version, "0.2.0-beta.1");
+    assert.equal(state.npmTag, "next");
+    assert.equal(
+      state.npmBytes,
+      state.blobs["reus-able-kioku-net-0.2.0-beta.1.tgz"],
+    );
+  } finally {
+    await f.cleanup();
+  }
+});
+
+for (const failure of ["E503", "E401", "ENEEDAUTH"]) {
+  test(`npm ${failure} stops before creating tags or GitHub releases`, async () => {
+    const f = await fixture();
+    try {
+      await f.update(
+        failure === "ENEEDAUTH"
+          ? { npmAuthFailure: true }
+          : { npmFailure: failure },
+      );
+      const result = f.run();
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, new RegExp(failure));
+      assert.equal(f.git("ls-remote", "--tags", "origin"), "");
+      assert.equal((await f.read()).release, null);
+      assert.ok(
+        (await f.commands()).every(
+          (c) => c.name !== "npm" || c.args[0] !== "publish",
+        ),
+      );
+    } finally {
+      await f.cleanup();
+    }
+  });
+}
+
+test("npm version conflict stops before GitHub writes and preserves the existing package", async () => {
+  const f = await fixture();
+  try {
+    const npm = {
+      name: "@reus-able/kioku-net",
+      version: "0.1.0",
+      dist: { integrity: "sha512-different" },
+    };
+    await f.update({ npm });
+    const result = f.run();
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Existing npm package differs/);
+    assert.equal(f.git("ls-remote", "--tags", "origin"), "");
+    assert.equal((await f.read()).release, null);
+    assert.deepEqual((await f.read()).npm, npm);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+for (const failure of [
+  "failPublishOnce",
+  "failAfterPublishOnce",
+  "failEditOnce",
+]) {
+  test(`${failure} preserves the GitHub draft and resumes without republishing npm bytes`, async () => {
+    const f = await fixture();
+    try {
+      await f.update({ [failure]: true });
+      const failed = f.run();
+      assert.equal(failed.status, 1);
+      const partial = await f.read();
+      assert.equal(partial.release.draft, true);
+      assert.equal(partial.release.assets.length, 2);
+      assert.equal(Boolean(partial.npm), failure !== "failPublishOnce");
+      const resumed = f.run();
+      assert.equal(resumed.status, 0, resumed.stderr);
+      const final = await f.read();
+      assert.equal(final.release.draft, false);
+      assert.equal(
+        final.npmBytes,
+        final.blobs["reus-able-kioku-net-0.1.0.tgz"],
+      );
+      assert.deepEqual(final.blobs, partial.blobs);
+      assert.equal(
+        (await f.commands()).filter(
+          (c) => c.name === "npm" && c.args[0] === "publish",
+        ).length,
+        failure === "failPublishOnce" ? 2 : 1,
+      );
+    } finally {
+      await f.cleanup();
+    }
+  });
+}

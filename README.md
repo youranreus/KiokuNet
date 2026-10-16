@@ -47,7 +47,16 @@ flowchart LR
 
 ## 安装
 
-需要 Node.js ≥ 22.20、npm，macOS 或 Linux（arm64 / amd64）。当前源码安装：
+需要 Node.js ≥ 22.20、npm，macOS 或 Linux（arm64 / amd64）。从 npm 安装：
+
+```bash
+npm install -g @reus-able/kioku-net
+kioku --help
+```
+
+预发布版本使用 `npm install -g @reus-able/kioku-net@next`。也可下载 [GitHub Release](https://github.com/youranreus/KiokuNet/releases) 的 `.tgz`，校验后执行 `npm install -g ./reus-able-kioku-net-<version>.tgz`。发布流程与校验方法见 [发布指南](knowledge/releasing.md)。
+
+当前源码安装：
 
 ```bash
 npm ci
@@ -56,7 +65,7 @@ npm install -g .
 kioku --help
 ```
 
-[已发布版本](https://github.com/youranreus/KiokuNet/releases) 可能仍是原有 Skill 接入方式；目录接入请使用包含本次改动的版本。CLI 自动寻找或下载并校验 Syncthing。
+v0.2.0 起支持机器接入与工作区目录接入；v0.1.0 使用原有 Skill 接入方式。CLI 自动寻找或下载并校验 Syncthing。
 
 ## 快速接入
 

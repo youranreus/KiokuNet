@@ -1,7 +1,19 @@
 {
-  "name": "kiokunet",
-  "version": "0.1.0",
+  "name": "@reus-able/kioku-net",
+  "version": "0.2.0",
   "description": "Local-first shared memory for personal agents",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/youranreus/KiokuNet.git"
+  },
+  "homepage": "https://github.com/youranreus/KiokuNet#readme",
+  "bugs": {
+    "url": "https://github.com/youranreus/KiokuNet/issues"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
   "type": "module",
   "bin": {
     "kioku": "dist/cli.js"
