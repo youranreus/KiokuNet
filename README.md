@@ -121,6 +121,7 @@ Hub 上通过 `source add --agent leader --role leader` 创建 Leader。Leader �
 | 目录接入历史决策，账号权限部分已被新方案替代 | [ADR 0004](knowledge/adr/0004-workspace-directories-and-current-state.md) |
 | Agent 了解 KiokuNet 和使用 CLI | [kioku](skills/kioku/SKILL.md) |
 | Leader 如何提炼当前文件 | [kioku-curate](skills/kioku-curate/SKILL.md) |
+| 知识组织默认实践与公共文档模板 | [使用指南](knowledge/usage.md#知识组织的默认实践) · [Shared 输出约定](skills/kioku-curate/references/shared-format.md) |
 | 领域术语 | [术语表](knowledge/GLOSSARY.md) |
 | 构建与发布 | [发布指南](knowledge/releasing.md) |
 
