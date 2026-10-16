@@ -1,3 +1,4 @@
+import { removeFixture } from "../helpers/files.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
@@ -47,8 +48,8 @@ test(
     const d = await mkdtemp(join(tmpdir(), "kioku-sync-")),
       hub = join(d, "hub"),
       node = join(d, "node");
-    const hd = join(d, "hub-data"),
-      nd = join(d, "node-data");
+    const hd = join(hub, "data"),
+      nd = join(node, "data");
     try {
       call(hub, [
         "init",
@@ -109,7 +110,7 @@ test(
           call(h, ["service", "stop"]);
         } catch {}
       }
-      await rm(d, { recursive: true, force: true });
+      await removeFixture(d);
     }
   },
 );

@@ -27,7 +27,7 @@ import { setupSync, endpoint, reconcile } from "./sync.js";
 import { start } from "./services.js";
 
 export interface InitOptions {
-  agent: string;
+  agent?: string;
   root: string;
   address: string;
   service: "native" | "manual";
@@ -37,6 +37,9 @@ export interface InitOptions {
 async function layout(c: Config, home: string) {
   await mkdir(join(c.root, "shared"), { recursive: true });
   if (c.mode === "hub") {
+    await atomicJson(join(c.root, "shared", ".kioku-shared.json"), {
+      networkId: c.networkId,
+    });
     for (const name of ["profile", "projects", "topics"])
       await mkdir(join(c.root, "shared", name), { recursive: true });
     const index = join(c.root, "shared", "INDEX.md");
@@ -50,7 +53,7 @@ async function layout(c: Config, home: string) {
   await reconcile(c);
 }
 export async function initialize(home: string, o: InitOptions) {
-  validId(o.agent);
+  if (o.agent) validId(o.agent);
   const root = await validateRoots(home, o.root);
   const address = endpoint(o.address);
   if (await exists(join(home, "config.json"))) {
@@ -59,7 +62,8 @@ export async function initialize(home: string, o: InitOptions) {
       c.mode === "hub" &&
         c.root === root &&
         c.hubAddress === address &&
-        c.agents.some((a) => a.id === o.agent && a.role === "leader"),
+        (!o.agent ||
+          c.agents.some((a) => a.id === o.agent && a.role === "leader")),
       "ALREADY_INITIALIZED",
       "Existing node configuration differs; no data was changed.",
     );
@@ -83,9 +87,9 @@ export async function initialize(home: string, o: InitOptions) {
     hubDeviceId: deviceId,
     hubAddress: address,
     publicKey,
-    agents: [
-      { id: o.agent, role: "leader", deviceId, active: true, local: true },
-    ],
+    agents: o.agent
+      ? [{ id: o.agent, role: "leader", deviceId, active: true, local: true }]
+      : [],
     peers: [],
     invitations: {},
     receipts: {},
@@ -107,11 +111,11 @@ export function hubOnly(c: Config) {
 export async function invite(
   home: string,
   c: Config,
-  agentId: string,
+  agentId: string | undefined,
   out: string,
 ) {
   hubOnly(c);
-  validId(agentId);
+  if (agentId) validId(agentId);
   requireThat(
     !c.agents.some((a) => a.id === agentId && a.active),
     "AGENT_EXISTS",
@@ -119,7 +123,10 @@ export async function invite(
   );
   const pending = Object.values(c.invitations).find(
     (i) =>
-      i.envelope.payload.agentId === agentId && !i.revoked && !i.consumedBy,
+      agentId &&
+      i.envelope.payload.agentId === agentId &&
+      !i.revoked &&
+      !i.consumedBy,
   );
   const retired = c.agents.find((a) => a.id === agentId && !a.active);
   requireThat(
@@ -161,7 +168,7 @@ export function validateInvitation(envelope: Envelope<Invitation>): Invitation {
     "INVALID_INVITATION",
     "Unsupported invitation.",
   );
-  validId(i.agentId);
+  if (i.agentId) validId(i.agentId);
   endpoint(i.hubAddress);
   requireThat(
     /^[A-Z2-7]{7}(-[A-Z2-7]{7}){7}$/.test(i.hubDeviceId),
@@ -236,46 +243,48 @@ export async function joinNetwork(
       "Hub local registration requires an unused invitation issued by this Hub.",
     );
   }
-  const existing = c.agents.find((a) => a.id === i.agentId);
-  requireThat(
-    !existing || existing.active || (i.seedHash && !c.receipts[i.id]),
-    "AGENT_RETIRED",
-    "Retired identity requires an explicit migration, not an old invitation.",
-  );
-  requireThat(
-    !existing?.active || existing.local,
-    "WRITER_CONFLICT",
-    "Another device already owns this identity.",
-  );
-  if (i.seedHash && !c.receipts[i.id]) {
+  if (i.agentId) {
+    const existing = c.agents.find((a) => a.id === i.agentId);
     requireThat(
-      seed,
-      "MIGRATION_SEED_REQUIRED",
-      "This invitation requires --seed pointing to the migration bundle.",
-    );
-    const m = await readJson<{ files: FileEntry[] }>(
-      join(seed, "manifest.json"),
+      !existing || existing.active || (i.seedHash && !c.receipts[i.id]),
+      "AGENT_RETIRED",
+      "Retired identity requires an explicit migration, not an old invitation.",
     );
     requireThat(
-      sha(JSON.stringify(m.files)) === i.seedHash,
-      "INVALID_SEED",
-      "Migration bundle does not match the invitation.",
+      !existing?.active || existing.local,
+      "WRITER_CONFLICT",
+      "Another device already owns this identity.",
     );
-    await seedRaw(join(seed, "data"), rawPath(c, i.agentId), m.files);
-  }
-  if (!existing)
-    c.agents.push({
-      id: i.agentId,
-      role: "member",
-      deviceId: c.deviceId,
-      active: true,
-      local: true,
-    });
-  else {
-    existing.active = true;
-    existing.local = true;
-    existing.deviceId = c.deviceId;
-    delete existing.seedHash;
+    if (i.seedHash && !c.receipts[i.id]) {
+      requireThat(
+        seed,
+        "MIGRATION_SEED_REQUIRED",
+        "This invitation requires --seed pointing to the migration bundle.",
+      );
+      const m = await readJson<{ files: FileEntry[] }>(
+        join(seed, "manifest.json"),
+      );
+      requireThat(
+        sha(JSON.stringify(m.files)) === i.seedHash,
+        "INVALID_SEED",
+        "Migration bundle does not match the invitation.",
+      );
+      await seedRaw(join(seed, "data"), rawPath(c, i.agentId), m.files);
+    }
+    if (!existing)
+      c.agents.push({
+        id: i.agentId,
+        role: "member",
+        deviceId: c.deviceId,
+        active: true,
+        local: true,
+      });
+    else {
+      existing.active = true;
+      existing.local = true;
+      existing.deviceId = c.deviceId;
+      delete existing.seedHash;
+    }
   }
   const receipt =
     c.receipts[i.id] ||
@@ -338,34 +347,72 @@ export async function enroll(home: string, c: Config, path: string) {
     "REVOKED_OR_CHANGED_DEVICE",
     "Device was revoked or its signing key changed.",
   );
-  const agent = c.agents.find((a) => a.id === i.agentId);
-  requireThat(
-    !agent ||
-      (agent.active && agent.deviceId === r.deviceId) ||
-      (!agent.active &&
-        agent.seedHash &&
-        agent.seedHash === i.seedHash &&
-        !issued.consumedBy),
-    "WRITER_CONFLICT",
-    "This identity is retired or owned by another writer.",
-  );
   if (!peer) c.peers.push({ deviceId: r.deviceId, publicKey: r.publicKey });
-  if (!agent)
-    c.agents.push({
-      id: i.agentId,
-      role: "member",
-      active: true,
-      local: false,
-      deviceId: r.deviceId,
-    });
-  else if (!agent.active) {
-    agent.active = true;
-    agent.local = false;
-    agent.deviceId = r.deviceId;
-    delete agent.seedHash;
+  if (i.agentId) {
+    const agent = c.agents.find((a) => a.id === i.agentId);
+    requireThat(
+      !agent ||
+        (agent.active && agent.deviceId === r.deviceId) ||
+        (!agent.active &&
+          agent.seedHash &&
+          agent.seedHash === i.seedHash &&
+          !issued.consumedBy),
+      "WRITER_CONFLICT",
+      "This identity is retired or owned by another writer.",
+    );
+    if (!agent)
+      c.agents.push({
+        id: i.agentId,
+        role: "member",
+        active: true,
+        local: false,
+        deviceId: r.deviceId,
+      });
+    else if (!agent.active) {
+      agent.active = true;
+      agent.local = false;
+      agent.deviceId = r.deviceId;
+      delete agent.seedHash;
+    }
   }
   issued.consumedBy = r.deviceId;
   await save(home, c);
   await reconcile(c);
   return { agentId: i.agentId, deviceId: r.deviceId, enrollment: "registered" };
+}
+
+export async function addSource(
+  home: string,
+  c: Config,
+  id: string,
+  role: "member" | "leader" = "member",
+) {
+  validId(id);
+  if (role === "leader") hubOnly(c);
+  const old = c.agents.find((a) => a.id === id);
+  requireThat(
+    !old || (old.local && old.active && old.role === role),
+    "WRITER_CONFLICT",
+    "Source already belongs to another writer, is retired, or has a different role.",
+  );
+  if (old) return old;
+  if (role === "leader")
+    requireThat(
+      !c.agents.some((a) => a.active && a.role === "leader"),
+      "LEADER_EXISTS",
+      "This network already has a Leader.",
+    );
+  const source: Config["agents"][number] = {
+    id,
+    role,
+    deviceId: c.deviceId,
+    local: true,
+    active: true,
+    registration: c.mode === "hub" ? "registered" : "pending",
+  };
+  await mkdir(rawPath(c, id), { recursive: true });
+  c.agents.push(source);
+  await save(home, c);
+  await reconcile(c);
+  return source;
 }

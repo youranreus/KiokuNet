@@ -38,15 +38,16 @@ export function requireThat(
 export const idPattern = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 export function validId(id: string): string {
   requireThat(
-    idPattern.test(id),
+    typeof id === "string" && idPattern.test(id),
     "INVALID_ID",
     "Identity must use 1–64 lowercase letters, digits, _ or -.",
   );
   return id;
 }
 export function stateHome(arg?: string): string {
-  return resolve(
-    arg || process.env.KIOKU_HOME || join(homedir(), ".config", "kiokunet"),
+  return join(
+    resolve(arg || process.env.KIOKU_HOME || join(homedir(), ".kiokunet")),
+    "config",
   );
 }
 export const sha = (input: string | Buffer) =>
@@ -79,17 +80,24 @@ export async function atomicJson(path: string, value: unknown): Promise<void> {
 export async function withLock<T>(
   home: string,
   work: () => Promise<T>,
+  waitMs = 5000,
 ): Promise<T> {
   await mkdir(home, { recursive: true, mode: 0o700 });
   const path = join(home, "mutation.lock");
-  try {
-    await mkdir(path);
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
-    throw new Failure(
-      "LOCKED",
-      `Another operation holds ${path}. If its process exited, remove this lock directory manually.`,
-    );
+  const deadline = Date.now() + waitMs;
+  for (;;) {
+    try {
+      await mkdir(path);
+      break;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      if (Date.now() >= deadline)
+        throw new Failure(
+          "LOCKED",
+          `Another operation holds ${path}. If its process exited, remove this lock directory manually.`,
+        );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
   }
   try {
     await writeFile(
@@ -126,6 +134,11 @@ export async function validateRoots(
   const h = await canonical(home),
     r = await canonical(root);
   requireThat(
+    r === (await canonical(join(dirname(home), "data"))),
+    "INSTALL_ROOT_REQUIRED",
+    "Knowledge must be under <installation>/data. Set --home to change the installation root.",
+  );
+  requireThat(
     !inside(h, r) && !inside(r, h),
     "OVERLAPPING_PATHS",
     "Knowledge root and private configuration directory must not overlap.",
@@ -139,6 +152,8 @@ export interface Agent {
   active: boolean;
   local: boolean;
   seedHash?: string;
+  registration?: "pending" | "registered" | "conflict";
+  registrationError?: string;
 }
 export interface Peer {
   deviceId: string;
@@ -150,7 +165,7 @@ export interface Invitation {
   kind: "invitation";
   id: string;
   networkId: string;
-  agentId: string;
+  agentId?: string;
   hubDeviceId: string;
   hubAddress: string;
   hubPublicKey: string;
@@ -170,8 +185,6 @@ export interface Receipt {
 }
 export interface Workspace {
   sourceId: string;
-  user: string;
-  uid: number;
   raw: string;
   shared: string;
   allRaw?: string;
@@ -316,3 +329,9 @@ export function verified<T>(value: Envelope<T>, key: string): T {
   }
   return value.payload;
 }
+
+export const registrationPath = (
+  c: Config,
+  device: string,
+  channel: "requests" | "replies",
+) => join(dirname(c.root), "state", "registration", device, channel);

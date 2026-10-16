@@ -11,4 +11,4 @@ date: 2026-10-15
 
 完整范围见 [设计记录](../2026-10-15-design-record.md)。
 
-当前接入、权限和历史保留规则以 [ADR 0004](0004-workspace-directories-and-current-state.md) 为准。
+后续接入、权限和历史保留规则及其替代关系见 [架构决策索引](README.md)。

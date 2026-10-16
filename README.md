@@ -36,9 +36,11 @@
 flowchart LR
   A[Agent 工作区] -->|可读写入口| R[自己的 Raw]
   R -->|Syncthing| H[Hub 汇集来源]
-  H -->|只读| L[Leader 提炼]
+  H -->|读取| L[Leader 提炼]
   L -->|写入| S[公共知识 shared]
-  S -->|同步并提供只读入口| A
+  S -->|同步| C[本机 shared]
+  C -->|自动生成只读副本| V[工作区 shared 入口]
+  V -->|读取| A
 ```
 
 每个来源目录只有一个写入节点，支持离线访问和最终一致同步。多个工作区可以链接同一来源目录。系统只维护当前文件，不提供历史保存、快照或恢复；来源删除不自动撤回已经提炼的公共知识。
@@ -58,38 +60,45 @@ kioku --help
 
 ## 快速接入
 
-同步服务与 Agent 使用不同系统账号。管理员先按 [权限准备](knowledge/usage.md#权限准备) 设置目录与账号，再建立工作区入口：
+安装根默认是 `~/.kiokunet`，可用 `--home /opt/kiokunet` 整体指定。知识位于 `data/`，配置位于 `config/`，状态、日志与只读副本也集中在安装根内。
 
 ```bash
-kioku workspace attach --home /var/lib/kioku-config \
-  --source /srv/kioku/agents/writer/raw \
-  --raw-path /work/project/memory \
-  --shared-path /work/project/knowledge \
-  --user agent-worker
+# Hub：先建立网络，不必创建 Agent
+kioku init --address <Hub地址>:22000
+kioku invite --out ~/.kiokunet/config/mac.invite.json
 
-kioku workspace check --home /var/lib/kioku-config
-kioku workspace detach --home /var/lib/kioku-config \
-  --raw-path /work/project/memory
+# Mac：接收邀请，完成机器配对
+kioku join --invite /path/to/mac.invite.json --out ~/.kiokunet/config/mac.receipt.json
+# 将回执传回 Hub 执行：kioku enroll --receipt /path/to/mac.receipt.json
+
+# Mac：以后创建来源，无需再次配对
+kioku source add --agent writer
+kioku workspace attach \
+  --source ~/.kiokunet/data/agents/writer/raw \
+  --raw-path /work/project/memory \
+  --shared-path /work/project/knowledge
 ```
 
-两个目标路径的父目录需已存在；已有不同内容时报错，相同映射重复执行成功。解除接入只移除登记的链接，源文件保留。接入命令由能管理这些目录的管理员或基础设施账号执行，Agent 进程实际使用 `--user` 指定的无特权系统账号。
+工作区父目录需已存在。普通 Agent 的 shared 入口指向自动更新的只读副本，首次没有可用副本时接入报错。同一来源可接入多个工作区；已有不同内容时拒绝覆盖。`workspace detach --raw-path PATH` 仅移除登记链接，保留知识。
 
-**符号链接本身没有只读能力。** CLI 验证源目录、父目录、私有配置和系统账号权限，同账号运行、权限可绕过或存在无法验证的 ACL 时拒绝接入。当前提供独立 Unix 账号后端，不按 Agent 品牌设兼容名单；容器中的 UID 映射或额外沙箱需自行保证一致，不能把宿主机一次检查当成任意运行环境认证。
+Hub 上通过 `source add --agent leader --role leader` 创建 Leader。Leader 的 shared 入口直接链接可写本体，可额外指定 `--all-raw-path`。运行和提炼任务仍由现有运行器管理。
 
-Leader 接入额外指定 `--all-raw-path`，可以写 shared、只读其他 Raw。Leader 保留 `kioku-curate` Skill；运行和定时任务仍由已有运行器管理。普通 Agent 不安装 memory Skill，不自动修改提示词或工作区规则。
+**只读副本用于防误写。** 不要求独立系统账号，也不阻止同账号进程主动改权限或访问本体。CLI 不修改提示词、不启动 Agent。完整部署、状态诊断和失败恢复见 [使用指南](knowledge/usage.md)。
 
 ## 项目状态
 
-本次改动提供目录接入和权限前置检查，替换原有普通 Agent Skill 接入。原有配对、同步和迁移管理命令保留兼容；其中的 Agent ID 是内部来源标识，日常文件操作无需使用。
+机器入网、来源登记与工作区接入已分离；后台负责来源自动登记、同步和 shared 副本刷新。离线创建来源后可先写 Raw，恢复连接后自动登记；同名来源不能接管其他机器的归属。副本刷新失败保留最后成功内容，并在状态中展示错误和更新时间。
 
-原先 Linux Hub ↔ Mac 的实际同步验证见 [历史验收](knowledge/2026-10-15-linux-hub-e2e-acceptance.md)。新的系统账号隔离需要在实际部署环境中验证；本地测试与其限制见 [使用指南](knowledge/usage.md#开发验证)。
+当前实现针对新安装，不提供旧版本目录布局迁移。机器与 Agent 的设计边界见 [设计记录](knowledge/2026-10-16-machine-and-agent-access-design.md)；测试结果和平台限制见 [实现记录](knowledge/implementation.md)。
 
 ## 文档导航
 
 | 内容 | 文档 |
 | --- | --- |
-| 配对、权限准备、接入和升级 | [使用与运维指南](knowledge/usage.md) |
-| 目录归属、权限和取消历史功能的决策 | [ADR 0004](knowledge/adr/0004-workspace-directories-and-current-state.md) |
+| 机器入网与 Agent 接入方案 | [2026-10-16 设计记录](knowledge/2026-10-16-machine-and-agent-access-design.md) |
+| 架构决策及替代关系 | [ADR 索引](knowledge/adr/README.md) |
+| 安装、配对、接入与运行状态 | [使用与运维指南](knowledge/usage.md) |
+| 目录接入历史决策，账号权限部分已被新方案替代 | [ADR 0004](knowledge/adr/0004-workspace-directories-and-current-state.md) |
 | Leader 如何提炼当前文件 | [kioku-curate](skills/kioku-curate/SKILL.md) |
 | 领域术语 | [术语表](knowledge/GLOSSARY.md) |
 | 构建与发布 | [发布指南](knowledge/releasing.md) |
@@ -105,4 +114,4 @@ npm run typecheck
 npm run format:check
 ```
 
-测试使用临时目录，集成测试需要本地端口权限。系统账号实际读写测试需要 root；普通用户执行时会明确跳过。[反馈问题](https://github.com/youranreus/KiokuNet/issues) 时请附系统、版本和去除敏感信息的复现步骤。
+测试使用临时目录，集成测试需要本地端口权限。防误写测试使用当前非 root 账号；原生服务和 Skill 分发测试需显式启用。[反馈问题](https://github.com/youranreus/KiokuNet/issues) 时请附系统、版本和去除敏感信息的复现步骤。

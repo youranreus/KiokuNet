@@ -1,6 +1,6 @@
 # KiokuNet 首版 CLI 草案
 
-> 本文保留首版历史背景；当前目录接入、权限和无历史保留的决策以 [ADR 0004](adr/0004-workspace-directories-and-current-state.md) 和 [使用指南](usage.md) 为准。
+> 本文保留首版历史草案；当前可执行流程见 [使用指南](usage.md)。最新已实现的接入设计见 [2026-10-16 接入设计](2026-10-16-machine-and-agent-access-design.md)；其中机器配对与来源登记已分离，新 CLI 参数见使用指南。决策替代关系见 [ADR 索引](adr/README.md)。
 
 > 历史设计记录：CLI 已于同日实现，当前可执行参数见 [README](../README.md)，验证结果见 [实现记录](implementation.md)。下文保留设计阶段原文。
 

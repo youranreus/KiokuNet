@@ -1,6 +1,6 @@
 # KiokuNet 首版设计讨论记录
 
-> 本文保留首版历史背景；当前目录接入、权限和无历史保留的决策以 [ADR 0004](adr/0004-workspace-directories-and-current-state.md) 和 [使用指南](usage.md) 为准。
+> 本文保留首版历史背景；最新已实现的接入设计见 [2026-10-16 接入设计](2026-10-16-machine-and-agent-access-design.md)，完整决策替代关系见 [ADR 索引](adr/README.md)。当前可执行流程见 [使用指南](usage.md)。
 
 > 本文保留设计确认记录。首版实现及验证进展见 [实现记录](implementation.md)，实际操作见 [README](../README.md)。
 

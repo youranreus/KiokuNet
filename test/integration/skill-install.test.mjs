@@ -31,7 +31,7 @@ test(
           "--agent",
           "leader",
           "--root",
-          join(d, "knowledge"),
+          join(d, "config", "data"),
           "--address",
           "127.0.0.1:23450",
           "--service",

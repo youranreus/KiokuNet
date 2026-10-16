@@ -11,7 +11,7 @@ import {
   mkdtemp,
 } from "node:fs/promises";
 import { constants } from "node:fs";
-import { join, resolve, delimiter } from "node:path";
+import { join, resolve, delimiter, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { Failure, requireThat, sha, exists } from "./core.js";
 const exec = promisify(execFile);
@@ -46,7 +46,7 @@ export async function findBinary(
   const paths = override
     ? [resolve(override)]
     : [
-        join(home, "bin", name),
+        join(dirname(home), "bin", name),
         ...(process.env.PATH || "").split(delimiter).map((p) => join(p, name)),
       ];
   for (const path of paths) {
@@ -107,8 +107,8 @@ export async function dependency(
     );
     const archive = join(temp, filename);
     await writeFile(archive, bytes);
-    const binary = join(home, "bin", name);
-    await mkdir(join(home, "bin"), { recursive: true, mode: 0o700 });
+    const binary = join(dirname(home), "bin", name);
+    await mkdir(join(dirname(home), "bin"), { recursive: true, mode: 0o700 });
     // Extract exactly the executable to stdout. Never unpack arbitrary archive paths.
     const command = extension === "zip" ? "unzip" : "tar";
     const args =

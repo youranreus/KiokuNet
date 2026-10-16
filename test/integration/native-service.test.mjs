@@ -1,3 +1,4 @@
+import { removeFixture } from "../helpers/files.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, access } from "node:fs/promises";
@@ -45,7 +46,7 @@ test(
         "--agent",
         "leader",
         "--root",
-        join(d, "data"),
+        join(home, "data"),
         "--address",
         `127.0.0.1:${await port()}`,
         "--service",
@@ -70,7 +71,7 @@ test(
         call(home, ["service", "stop"]);
       } catch {}
       for (const f of files) await rm(f.path, { force: true });
-      await rm(d, { recursive: true, force: true });
+      await removeFixture(d);
     }
   },
 );

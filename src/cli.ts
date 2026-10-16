@@ -11,9 +11,22 @@ import {
   withLock,
   save,
 } from "./core.js";
-import { initialize, invite, joinNetwork, enroll } from "./network.js";
+import {
+  initialize,
+  invite,
+  joinNetwork,
+  enroll,
+  addSource,
+} from "./network.js";
+import { viewStatus } from "./views.js";
 import { syncStatus } from "./sync.js";
-import { start, stop, unregister, serviceFiles } from "./services.js";
+import {
+  start,
+  stop,
+  unregister,
+  serviceFiles,
+  workerStatus,
+} from "./services.js";
 import {
   retire,
   revoke,
@@ -22,7 +35,7 @@ import {
 } from "./lifecycle.js";
 import { dependency, run } from "./process.js";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, join } from "node:path";
 import { diagnose, lastCuration } from "./diagnostics.js";
 import {
   attachWorkspace,
@@ -35,28 +48,31 @@ const packageVersion = JSON.parse(
 ).version;
 const help = `KiokuNet ${packageVersion} — personal agent memory network
 
-  init --agent ID --root DIR --address HOST[:PORT]
-  invite --agent ID --out FILE
-  join --invite FILE --root DIR --out RECEIPT
+  init --address HOST[:PORT]
+  invite --out FILE
+  join --invite FILE --out RECEIPT
   enroll --receipt FILE
-  context [--agent ID]
-  agent list
-  agent add --invite FILE --out RECEIPT
-  agent remove --agent ID --confirm ID
-  agent migrate --agent ID --target DIR --confirm ID
-  agent migrate --receipt MIGRATION --out INVITE --confirm ID
+  source add --agent ID [--role member|leader]
+  source list
+  source remove --agent ID --confirm ID
+  source migrate --agent ID --target DIR --confirm ID
+  source migrate --receipt MIGRATION --out INVITE --confirm ID
   node revoke --device DEVICE_ID --confirm DEVICE_ID
+  context [--agent ID]
   status | doctor
   service start|stop|restart|files
-  workspace attach --source RAW_DIR --raw-path PATH --shared-path PATH --user OS_USER [--all-raw-path PATH]
+  workspace attach --source RAW_DIR --raw-path PATH --shared-path PATH [--all-raw-path PATH]
   workspace detach --raw-path PATH
   workspace list | workspace check
   deps install
   skill install --runtime codex|hermes-agent [--source REPOSITORY] [--scope global|project]
 
-Global: --home DIR (or KIOKU_HOME), --json, --help
+Global: --home INSTALL_DIR (or KIOKU_HOME, default ~/.kiokunet), --json, --help
+Data: <home>/data; private configuration: <home>/config; shared copies: <home>/views/shared
 Setup: --service native|manual (default native), --gui-port PORT, --listen-port PORT
-manual configures without registering services; use service start for a temporary daemon.
+manual configures without registering services; service start runs synchronization,
+source registration and shared-copy refresh until service stop or logout/reboot.
+agent is an alias for source. Leader sources can only be added on the Hub.
 `;
 const strings = [
   "home",
@@ -80,6 +96,7 @@ const strings = [
   "shared-path",
   "all-raw-path",
   "user",
+  "role",
 ];
 let json = process.argv.includes("--json");
 try {
@@ -89,7 +106,8 @@ try {
   options.help = { type: "boolean" };
   const parsed = parseArgs({ allowPositionals: true, options });
   const args = parsed.values as Record<string, string | boolean | undefined>;
-  const [cmd, sub] = parsed.positionals;
+  const [command, sub] = parsed.positionals;
+  const cmd = command === "source" ? "agent" : command;
   const home = stateHome(args.home as string | undefined);
   if (args.help || !cmd) {
     console.log(help);
@@ -139,16 +157,10 @@ try {
     (cmd === "service" && sub === "files") ||
     (cmd === "workspace" && ["list", "check"].includes(sub || ""));
   const perform = async (): Promise<unknown> => {
-    if (cmd === "workspace" && sub === "attach")
-      requireThat(
-        value("user"),
-        "ISOLATION_REQUIRED",
-        "Workspace attachment requires --user: a separate, unprivileged OS account.",
-      );
     if (cmd === "init") {
       const c = await initialize(home, {
-        agent: await need("agent", "Leader Agent ID"),
-        root: await need("root", "Knowledge directory"),
+        agent: value("agent"),
+        root: value("root") || join(dirname(home), "data"),
         address: await need("address", "Hub fixed address"),
         service,
         guiPort: port("gui-port"),
@@ -158,6 +170,8 @@ try {
         networkId: c.networkId,
         deviceId: c.deviceId,
         root: c.root,
+        installation: dirname(home),
+        config: home,
         serviceMode: c.serviceMode,
       };
     }
@@ -173,7 +187,7 @@ try {
       return joinNetwork(
         home,
         await need("invite", "Invitation file"),
-        await need("root", "Knowledge directory"),
+        value("root") || join(dirname(home), "data"),
         await need("out", "Receipt output file"),
         service,
         port("gui-port"),
@@ -191,7 +205,6 @@ try {
             "Workspace path for shared knowledge",
           ),
           allRaw: value("all-raw-path"),
-          user: value("user")!,
         });
       if (sub === "detach")
         return detachWorkspace(
@@ -211,12 +224,21 @@ try {
       return invite(
         home,
         c,
-        await need("agent", "Target Agent ID"),
+        value("agent"),
         await need("out", "Invitation output file"),
       );
     if (cmd === "enroll")
       return enroll(home, c, await need("receipt", "Receipt file"));
     if (cmd === "agent" && sub === "list") return { agents: c.agents };
+    if (cmd === "agent" && sub === "add" && !value("invite")) {
+      const role = value("role") || "member";
+      requireThat(
+        role === "member" || role === "leader",
+        "USAGE",
+        "--role must be member or leader.",
+      );
+      return addSource(home, c, await need("agent", "Source ID"), role);
+    }
     if (cmd === "agent" && sub === "add")
       return joinNetwork(
         home,
@@ -324,6 +346,8 @@ try {
         agents: c.agents,
         workspaces: c.workspaces || [],
         sync: await syncStatus(c),
+        view: await viewStatus(home),
+        worker: await workerStatus(home),
         curation: await lastCuration(c),
         serviceMode: c.serviceMode,
       };

@@ -4,6 +4,8 @@ import { createConnection } from "node:net";
 import { readFile, stat } from "node:fs/promises";
 import { Config, exists, readJson, rawPath } from "./core.js";
 import { syncStatus, api } from "./sync.js";
+import { viewStatus } from "./views.js";
+import { workerStatus } from "./services.js";
 import { checkWorkspaces } from "./workspace.js";
 import { findBinary, run } from "./process.js";
 export async function lastCuration(c: Config): Promise<unknown> {
@@ -132,12 +134,47 @@ export async function diagnose(c: Config, home: string, runtime?: string) {
       );
     }
   }
+  const worker = await workerStatus(home);
+  check(
+    "background-worker",
+    Boolean(
+      worker &&
+        Date.now() - Date.parse(worker.updatedAt) < 15000 &&
+        !worker.error,
+    ),
+    worker?.error ||
+      "Background registration and shared-copy refresh heartbeat.",
+  );
+  const pending = c.agents.filter(
+    (a) =>
+      a.local &&
+      a.active &&
+      (a.registration === "pending" || a.registration === "conflict"),
+  );
+  check(
+    "source-registration",
+    pending.length === 0,
+    pending.map((a) => `${a.id}: ${a.registration}`).join(", ") ||
+      "All local sources registered.",
+  );
+  if (
+    (c.workspaces || []).some(
+      (w) => c.agents.find((a) => a.id === w.sourceId)?.role === "member",
+    )
+  ) {
+    const view = await viewStatus(home);
+    check(
+      "shared-copy",
+      Boolean(view.lastSuccess && !view.error),
+      view.error || `Last successful refresh: ${view.lastSuccess || "none"}`,
+    );
+  }
   const workspaces = await checkWorkspaces(home, c);
   for (const w of workspaces.checks)
     check(
       `workspace:${w.raw}`,
       w.ok,
-      w.detail || "Permissions and links verified.",
+      w.detail || "Workspace links and shared-copy write protection verified.",
     );
   return {
     healthy: checks.every((c) => c.ok),

@@ -11,7 +11,15 @@ import { constants } from "node:fs";
 import { join, dirname } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:net";
-import { Config, Failure, exists, requireThat, rawPath, sha } from "./core.js";
+import {
+  Config,
+  Failure,
+  exists,
+  requireThat,
+  rawPath,
+  sha,
+  registrationPath,
+} from "./core.js";
 import { run, dependency } from "./process.js";
 
 export async function freePort(): Promise<number> {
@@ -50,7 +58,7 @@ export async function setupSync(
     home,
     process.env.KIOKU_SYNCTHING,
   );
-  const syncHome = join(home, "syncthing");
+  const syncHome = join(dirname(home), "state", "syncthing");
   await mkdir(syncHome, { recursive: true, mode: 0o700 });
   await run(binary, ["generate", "--home", syncHome], 30_000);
   const output = await run(binary, ["device-id", "--home", syncHome]);
@@ -102,8 +110,23 @@ export function folders(c: Config): Folder[] {
       })),
     },
   ];
+  const nodes = c.mode === "hub" ? permitted : [c.deviceId];
+  for (const node of nodes)
+    for (const channel of ["requests", "replies"] as const) {
+      const sender = channel === "requests" ? node : c.hubDeviceId;
+      result.push({
+        id: `kioku-${c.networkId}-registration-${node}-${channel}`,
+        label: `KiokuNet registration ${channel}`,
+        path: registrationPath(c, node, channel),
+        type: c.deviceId === sender ? "sendonly" : "receiveonly",
+        devices: [node, c.hubDeviceId].map((deviceID) => ({ deviceID })),
+      });
+    }
   for (const a of c.agents.filter(
-    (a) => a.active && (a.local || c.mode === "hub"),
+    (a) =>
+      a.active &&
+      (a.local || c.mode === "hub") &&
+      (!a.registration || a.registration === "registered"),
   )) {
     const peer = a.local ? c.hubDeviceId : a.deviceId;
     result.push({
@@ -235,6 +258,7 @@ export async function reconcile(c: Config): Promise<void> {
       ...f,
       rescanIntervalS: 60,
       fsWatcherEnabled: true,
+      fsWatcherDelayS: 1,
     }));
     config.devices = devices.map((d) => ({ ...dd, ...d }));
     config.options = { ...config.options, ...options };
@@ -249,7 +273,7 @@ export async function reconcile(c: Config): Promise<void> {
     "SYNC_CONFIG",
     "Missing generated Syncthing configuration.",
   );
-  const contents = `<configuration version="${version}">\n${fs.map((f) => `<folder id="${xml(f.id)}" label="${xml(f.label)}" path="${xml(f.path)}" type="${f.type}" rescanIntervalS="60" fsWatcherEnabled="true" ignorePerms="true"><maxConflicts>0</maxConflicts><versioning type=""/><syncOwnership>false</syncOwnership><syncXattrs>false</syncXattrs>${f.devices.map((d) => `<device id="${d.deviceID}"/>`).join("")}</folder>`).join("\n")}
+  const contents = `<configuration version="${version}">\n${fs.map((f) => `<folder id="${xml(f.id)}" label="${xml(f.label)}" path="${xml(f.path)}" type="${f.type}" rescanIntervalS="60" fsWatcherEnabled="true" fsWatcherDelayS="1" ignorePerms="true"><maxConflicts>0</maxConflicts><versioning type=""/><syncOwnership>false</syncOwnership><syncXattrs>false</syncXattrs>${f.devices.map((d) => `<device id="${d.deviceID}"/>`).join("")}</folder>`).join("\n")}
 ${devices.map((d) => `<device id="${d.deviceID}" name="${d.name}" introducer="false" autoAcceptFolders="false">${d.addresses.map((a) => `<address>${xml(a)}</address>`).join("")}</device>`).join("\n")}
 <gui enabled="true" tls="false"><address>127.0.0.1:${c.sync.guiPort}</address><apikey>${c.sync.apiKey}</apikey></gui>
 <options><listenAddress>tcp://0.0.0.0:${c.sync.listenPort}</listenAddress><globalAnnounceEnabled>false</globalAnnounceEnabled><localAnnounceEnabled>false</localAnnounceEnabled><relaysEnabled>false</relaysEnabled><natEnabled>false</natEnabled><urAccepted>-1</urAccepted><autoUpgradeIntervalH>0</autoUpgradeIntervalH><startBrowser>false</startBrowser></options>

@@ -33,13 +33,13 @@ test("noninteractive setup rejects missing or unsafe inputs before creating depe
           "--agent",
           "leader",
           "--root",
-          join(home, "data"),
+          join(home, "elsewhere"),
           "--address",
           "127.0.0.1:22000",
           "--service",
           "manual",
         ],
-        "OVERLAPPING_PATHS",
+        "INSTALL_ROOT_REQUIRED",
       ],
     ]) {
       const r = spawnSync(

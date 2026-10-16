@@ -1,8 +1,17 @@
 import { mkdir, writeFile, open, rm } from "node:fs/promises";
 import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { spawn } from "node:child_process";
-import { Config, sha, requireThat, Failure, exists } from "./core.js";
+import {
+  Config,
+  sha,
+  requireThat,
+  Failure,
+  exists,
+  readJson,
+  atomicJson,
+} from "./core.js";
 import { api, online, reconcile } from "./sync.js";
 import { run } from "./process.js";
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -44,12 +53,12 @@ export function serviceFiles(
   userHome = homedir(),
 ): { path: string; content: string }[] {
   const id = label(home);
-  const syncArgs = [c.sync.binary, ...serveArgs(c)];
+  const syncArgs = workerArgs(home);
   if (platform === "darwin") {
     const directory = join(userHome, "Library", "LaunchAgents");
     const plist = (suffix: string, args: string[], schedule: string) => ({
       path: join(directory, `${id}.${suffix}.plist`),
-      content: `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>Label</key><string>${id}.${suffix}</string><key>ProgramArguments</key><array>${args.map((a) => `<string>${escapeXml(a)}</string>`).join("")}</array>${schedule}<key>Umask</key><integer>18</integer><key>StandardOutPath</key><string>${escapeXml(join(home, `${suffix}.log`))}</string><key>StandardErrorPath</key><string>${escapeXml(join(home, `${suffix}.log`))}</string></dict></plist>\n`,
+      content: `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>Label</key><string>${id}.${suffix}</string><key>ProgramArguments</key><array>${args.map((a) => `<string>${escapeXml(a)}</string>`).join("")}</array>${schedule}<key>Umask</key><integer>18</integer><key>StandardOutPath</key><string>${escapeXml(join(dirname(home), "logs", `${suffix}.log`))}</string><key>StandardErrorPath</key><string>${escapeXml(join(dirname(home), "logs", `${suffix}.log`))}</string></dict></plist>\n`,
     });
     return [
       plist(
@@ -74,6 +83,7 @@ export function serviceFiles(
 }
 export async function start(c: Config, home: string): Promise<void> {
   await cleanupLegacyBackup(home);
+  await mkdir(join(dirname(home), "logs"), { recursive: true, mode: 0o700 });
   if (c.serviceMode === "native" && process.platform === "linux") {
     const uid = String(process.getuid!());
     let lingering = await run("loginctl", [
@@ -101,16 +111,16 @@ export async function start(c: Config, home: string): Promise<void> {
   }
   // Restart existing daemons too: a process retains the umask it inherited
   // before an upgrade, even when its service file has been rewritten.
-  if (await online(c)) await stop(c, home);
+  if ((await online(c)) || (await workerStatus(home))) await stop(c, home);
   await reconcile(c);
   if (c.serviceMode === "manual") {
-    if (await online(c)) return;
-    const log = await open(join(home, "sync.log"), "a", 0o600);
+    if ((await online(c)) && (await workerStatus(home))) return;
+    const log = await open(join(dirname(home), "logs", "sync.log"), "a", 0o600);
     try {
       const previousMask = process.umask(0o022);
       let child;
       try {
-        child = spawn(c.sync.binary, serveArgs(c), {
+        child = spawn(process.execPath, workerArgs(home).slice(1), {
           detached: true,
           stdio: ["ignore", log.fd, log.fd],
           env: { ...process.env, STNOUPGRADE: "1" },
@@ -148,12 +158,12 @@ export async function start(c: Config, home: string): Promise<void> {
     }
   }
   for (let i = 0; i < 50; i++) {
-    if (await online(c)) return;
+    if ((await online(c)) && (await workerStatus(home))) return;
     await pause(200);
   }
   throw new Failure(
     "SERVICE_NOT_READY",
-    `Sync did not become ready; inspect ${join(home, "sync.log")}. Configuration was saved.`,
+    `Sync did not become ready; inspect ${join(dirname(home), "logs", "sync.log")}. Configuration was saved.`,
     undefined,
     1,
   );
@@ -175,9 +185,12 @@ export async function stop(c: Config, home: string): Promise<void> {
       await run("systemctl", ["--user", "stop", `${id}.service`]);
     }
   }
+  const worker = await workerStatus(home);
+  if (worker)
+    await atomicJson(join(home, "worker.stop"), { token: worker.token });
   if (await online(c)) await api(c, "system/shutdown", "POST");
-  for (let i = 0; i < 30; i++) {
-    if (!(await online(c))) return;
+  for (let i = 0; i < 80; i++) {
+    if (!(await online(c)) && !(await workerStatus(home))) return;
     await pause(100);
   }
   throw new Failure(
@@ -232,5 +245,33 @@ export async function cleanupLegacyBackup(home: string): Promise<void> {
       changed = true;
     }
     if (changed) await run("systemctl", ["--user", "daemon-reload"]);
+  }
+}
+
+function workerArgs(home: string): string[] {
+  return [
+    process.execPath,
+    fileURLToPath(new URL("./worker.js", import.meta.url)),
+    home,
+  ];
+}
+export async function workerStatus(home: string): Promise<{
+  pid: number;
+  token: string;
+  updatedAt: string;
+  error?: string;
+} | null> {
+  if (!(await exists(join(home, "worker.json")))) return null;
+  try {
+    const status = await readJson<{
+      pid: number;
+      token: string;
+      updatedAt: string;
+      error?: string;
+    }>(join(home, "worker.json"));
+    process.kill(status.pid, 0);
+    return status;
+  } catch {
+    return null;
   }
 }

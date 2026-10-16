@@ -1,9 +1,11 @@
 ---
-status: accepted
+status: partially superseded by ADR-0005 and ADR-0006
 date: 2026-10-15
 ---
 
 # 工作区目录接入与当前状态
+
+> 2026-10-16：配对与来源登记关系由 [ADR 0005](0005-machine-enrollment-and-source-registration.md) 调整；强制系统账号与权限隔离由 [ADR 0006](0006-readonly-shared-workspace-copies.md) 的只读副本防误写方案取代。后两项已实现；下文保留原决策，文件读写、链接冲突保护及取消历史保留等未被替代部分仍有效。
 
 Agent 通过工作区中的普通文件目录使用记忆。共享目录和自己的 Raw 入口分别可配置，以源目录表示归属；Agent 不再安装 memory Skill、传入身份或调用 context。配对与单写入节点检查继续使用内部目录标识，旧配置和管理命令中的 agent ID 作为兼容名称保留。工作区入口不自动触发 Agent 阅读，也不改写运行器提示词。
 

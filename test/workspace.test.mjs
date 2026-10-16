@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 
 const cli = resolve("dist/cli.js");
 
-test("workspace attachment requires an OS account before exposing directories", async () => {
+test("workspace attachment requires an initialized node before exposing directories", async () => {
   const dir = await mkdtemp(join(tmpdir(), "kioku-workspace-"));
   try {
     const result = spawnSync(
@@ -29,7 +29,7 @@ test("workspace attachment requires an OS account before exposing directories", 
       { encoding: "utf8" },
     );
     assert.equal(result.status, 2);
-    assert.equal(JSON.parse(result.stdout).error.code, "ISOLATION_REQUIRED");
+    assert.equal(JSON.parse(result.stdout).error.code, "NOT_INITIALIZED");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

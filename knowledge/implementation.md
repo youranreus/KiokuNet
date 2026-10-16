@@ -1,8 +1,26 @@
 # KiokuNet 0.1.0 实现与验收
 
-> 本文保留首版历史背景；当前目录接入、权限和无历史保留的决策以 [ADR 0004](adr/0004-workspace-directories-and-current-state.md) 和 [使用指南](usage.md) 为准。
+> 本文记录当前实现与历史验收。当前操作见 [使用指南](usage.md)，决策见 [ADR 索引](adr/README.md)。下方旧版本记录保留历史事实，不能作为当前命令或权限要求。
 
-## 工作区目录接入实现（2026-10-16）
+## 机器与 Agent 接入分离（2026-10-16）
+
+以 `7a12378d62e831df20ee56969f782ba4659ea221` 为基线实现 [接入设计](2026-10-16-machine-and-agent-access-design.md) 与 ADR 0005、0006。
+
+- 安装根默认 `~/.kiokunet`，`--home` / `KIOKU_HOME` 整体切换根目录；data、config、state、logs、bin、views 集中存放。系统服务注册文件、workspace 链接、包管理器安装的 CLI 为约定例外。
+- Hub 和节点可先完成机器配对而不创建 Agent。`source add` 在本机登记来源；可信节点通过按设备隔离的 Syncthing 控制文件夹交换签名来源清单和回执，离线创建后自动登记，拒绝来源归属冲突。
+- Hub 汇集全部 Raw，普通节点只配置本机 Raw 和 shared。Leader 在 Hub 创建，shared 直接可写，可额外链接全部 Raw。
+- 普通 Agent 使用独立复制、文件 0444 / 目录 0555 的 shared 副本，不再要求独立系统账号。原子切换稳定入口；刷新失败保留上一成功副本，状态报告时间与错误，恢复后继续刷新。
+- 同一来源可接入多个工作区，保留链接幂等、冲突保护和解除后保留数据的行为。后台 worker 管理同步、登记和刷新，不启动 Agent 或创建提炼任务。
+
+验证环境：macOS arm64、Node.js 22.23.2、Syncthing 2.1.6。全量 `KIOKU_TEST_NATIVE=1 KIOKU_TEST_SKILLS=1 node --test test/*.test.mjs test/integration/*.test.mjs` 为 **25 项通过、0 跳过**。审查后新增异常退出回归，定向运行来源登记故障恢复与进程异常退出 **2 项通过**；当前共 26 项测试。TypeScript、Prettier 和 diff 空白检查通过。
+
+三个验收边界均使用真实接口：公开 CLI 验证布局、配对和来源登记；同账号文件操作验证 Raw 可写、shared 的写入/创建/删除被拒绝、Leader 可写、多个工作区和链接生命周期；两个真实 Syncthing 节点及后台进程验证自动登记、冲突拒绝、Raw 上传、shared 分发、只读副本更新、首次无副本报错、失败保留和自动恢复。另通过真实 macOS LaunchAgent 和隔离项目的 Skill 安装验证。
+
+Standards 初审 2 项、Spec 初审 1 项（其中来源登记问题重合），均已修复，复核无遗留：节点成功应用同步配置后才保存登记状态，避免瞬时失败后不再重试；Syncthing 非主动退出返回非零状态，使 Linux 的 `Restart=on-failure` 能触发重启。两项回归都先复现失败，再验证修复。
+
+本轮没有更新真实云机或现有安装。Linux systemd 新 worker 的实机重启行为仍需部署验证；只读副本定位为防误写，不提供同账号恶意绕过防护，也不承诺跨文件、跨节点事务一致性。本轮不做旧安装布局迁移，来源迁移功能保留。
+
+## 历史：工作区目录接入实现（2026-10-16）
 
 本轮以 `ab09798` 为基线实现 ADR 0004：增加 workspace attach/detach/list/check，使用独立系统账号验证源目录、父目录及私有配置的权限；Leader 保留提炼 Skill，普通 Agent 直接操作文件。移除历史备份、恢复及旧文档保存，现有备份数据不做清理。完整使用和升级步骤见 [使用指南](usage.md)。
 

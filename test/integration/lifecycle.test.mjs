@@ -29,9 +29,9 @@ test("multiple identities require a binding, and migration seeds the new writer 
     old = join(d, "old"),
     fresh = join(d, "fresh");
   try {
-    const hd = join(d, "hub-data"),
-      od = join(d, "old-data"),
-      nd = join(d, "new-data");
+    const hd = join(h, "data"),
+      od = join(old, "data"),
+      nd = join(fresh, "data");
     assert.equal(
       call(h, [
         "init",
