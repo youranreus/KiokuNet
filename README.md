@@ -67,6 +67,17 @@ kioku --help
 
 v0.2.0 起支持机器接入与工作区目录接入；v0.1.0 使用原有 Skill 接入方式。CLI 自动寻找或下载并校验 Syncthing。
 
+### 给 Agent 安装使用指南
+
+v0.3.0 起随包提供两个独立 Skill：`kioku` 介绍产品和 CLI 使用，`kioku-curate` 供 Leader 整理公共知识。安装对应版本的 CLI 后，可以在初始化网络前安装通用指南：
+
+```bash
+kioku skill install --runtime codex
+# 也支持 hermes-agent、pi、universal；--scope project 安装到当前项目
+```
+
+默认安装 `kioku`，普通节点和 Hub 均可使用。它按需指导安装、入网、来源与工作区接入、诊断和迁移，不处理知识内容，也不成为文件访问的前置条件。已有 Hub 若需要整理能力，显式执行 `kioku skill install --runtime hermes-agent --skill kioku-curate`；任务仍由原有运行器调度。
+
 ## 快速接入
 
 安装根默认是 `~/.kiokunet`，可用 `--home /opt/kiokunet` 整体指定。知识位于 `data/`，配置位于 `config/`，状态、日志与只读副本也集中在安装根内。
@@ -108,6 +119,7 @@ Hub 上通过 `source add --agent leader --role leader` 创建 Leader。Leader �
 | 架构决策及替代关系 | [ADR 索引](knowledge/adr/README.md) |
 | 安装、配对、接入与运行状态 | [使用与运维指南](knowledge/usage.md) |
 | 目录接入历史决策，账号权限部分已被新方案替代 | [ADR 0004](knowledge/adr/0004-workspace-directories-and-current-state.md) |
+| Agent 了解 KiokuNet 和使用 CLI | [kioku](skills/kioku/SKILL.md) |
 | Leader 如何提炼当前文件 | [kioku-curate](skills/kioku-curate/SKILL.md) |
 | 领域术语 | [术语表](knowledge/GLOSSARY.md) |
 | 构建与发布 | [发布指南](knowledge/releasing.md) |

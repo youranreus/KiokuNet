@@ -65,7 +65,8 @@ const help = `KiokuNet ${packageVersion} — personal agent memory network
   workspace detach --raw-path PATH
   workspace list | workspace check
   deps install
-  skill install --runtime codex|hermes-agent [--source REPOSITORY] [--scope global|project]
+  skill install --runtime codex|hermes-agent|pi|universal [--skill kioku|kioku-curate]
+    [--source REPOSITORY] [--scope global|project]
 
 Global: --home INSTALL_DIR (or KIOKU_HOME, default ~/.kiokunet), --json, --help
 Data: <home>/data; private configuration: <home>/config; shared copies: <home>/views/shared
@@ -73,6 +74,7 @@ Setup: --service native|manual (default native), --gui-port PORT, --listen-port 
 manual configures without registering services; service start runs synchronization,
 source registration and shared-copy refresh until service stop or logout/reboot.
 agent is an alias for source. Leader sources can only be added on the Hub.
+Skill installation defaults to kioku and works before init/join; kioku-curate requires a Hub.
 `;
 const strings = [
   "home",
@@ -91,6 +93,7 @@ const strings = [
   "runtime",
   "source",
   "scope",
+  "skill",
   "seed",
   "raw-path",
   "shared-path",
@@ -194,6 +197,69 @@ try {
         port("listen-port"),
         value("seed"),
       );
+    if (cmd === "skill" && sub === "install") {
+      const name = value("skill") || "kioku";
+      requireThat(
+        ["kioku", "kioku-curate"].includes(name),
+        "UNSUPPORTED_SKILL",
+        "Supported skills: kioku, kioku-curate.",
+      );
+      const runtime = await need(
+        "runtime",
+        "Runtime: codex, hermes-agent, pi or universal",
+      );
+      requireThat(
+        ["codex", "hermes-agent", "pi", "universal"].includes(runtime),
+        "UNSUPPORTED_RUNTIME",
+        "Supported runtime identifiers: codex, hermes-agent, pi, universal.",
+      );
+      const scope = value("scope") || "global";
+      requireThat(
+        ["global", "project"].includes(scope),
+        "USAGE",
+        "Scope must be global or project.",
+      );
+      const source =
+        value("source") ||
+        resolve(dirname(fileURLToPath(import.meta.url)), "..");
+      requireThat(
+        !source.startsWith("-"),
+        "INVALID_SOURCE",
+        "Invalid skill source.",
+      );
+      if (name === "kioku-curate") {
+        const c = await load(home);
+        requireThat(
+          c.mode === "hub",
+          "LEADER_REQUIRED",
+          "kioku-curate requires a Hub. Install kioku for the CLI usage guide.",
+        );
+      }
+      const names = [name];
+      const output = await run("npx", [
+        "-y",
+        "skills@1.7.2",
+        "add",
+        source,
+        "--skill",
+        ...names,
+        "-a",
+        runtime,
+        ...(scope === "global" ? ["-g"] : []),
+        "-y",
+      ]);
+      return {
+        runtime,
+        scope,
+        source,
+        skills: names,
+        output,
+        instruction:
+          name === "kioku-curate"
+            ? "Supply the Leader workspace paths to the curation task. No Agent identity binding is required."
+            : "Use kioku for product concepts and CLI workflows. It does not process knowledge content or require an initialized network.",
+      };
+    }
     const c = await load(home);
     if (cmd === "workspace") {
       if (sub === "attach")
@@ -288,55 +354,6 @@ try {
         id,
         await need("target", "New migration bundle directory"),
       );
-    }
-    if (cmd === "skill" && sub === "install") {
-      const runtime = await need("runtime", "Runtime: codex or hermes-agent");
-      requireThat(
-        ["codex", "hermes-agent", "pi", "universal"].includes(runtime),
-        "UNSUPPORTED_RUNTIME",
-        "Supported runtime identifiers: codex, hermes-agent, pi, universal.",
-      );
-      const scope = value("scope") || "global";
-      requireThat(
-        ["global", "project"].includes(scope),
-        "USAGE",
-        "Scope must be global or project.",
-      );
-      const source =
-        value("source") ||
-        resolve(dirname(fileURLToPath(import.meta.url)), "..");
-      requireThat(
-        !source.startsWith("-"),
-        "INVALID_SOURCE",
-        "Invalid skill source.",
-      );
-      requireThat(
-        c.mode === "hub",
-        "LEADER_REQUIRED",
-        "Only Leader curation uses a Skill. Use workspace attach for file access.",
-      );
-      const names = ["kioku-curate"];
-      const output = await run("npx", [
-        "-y",
-        "skills@1.7.2",
-        "add",
-        source,
-        "--skill",
-        ...names,
-        "-a",
-        runtime,
-        ...(scope === "global" ? ["-g"] : []),
-        "-y",
-      ]);
-      return {
-        runtime,
-        scope,
-        source,
-        skills: names,
-        output,
-        instruction:
-          "Supply the Leader workspace paths to the curation task. No Agent identity binding is required.",
-      };
     }
     if (cmd === "status")
       return {

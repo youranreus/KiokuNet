@@ -121,8 +121,30 @@ kioku node revoke --device DEVICE_ID --confirm DEVICE_ID
 
 来源跨机器迁移仍可使用已有的 `source migrate` 显式流程转移当前文件，具体提示由命令返回；这与旧版本安装目录迁移不同。迁移不能恢复历史。
 
-## Leader 提炼与开发验证
+## Agent 使用指南与 Leader 提炼
 
-Leader 可单独安装 `kioku-curate`，任务提供工作区 Raw/shared/allRaw 路径，由原有运行器调度。`kioku skill install --runtime hermes-agent` 保留为可选分发操作；运行器的 Skill 文件按它自己的安装规则管理。
+随包提供两个可选 Skill：
+
+| Skill | 职责 | 安装条件 |
+| --- | --- | --- |
+| [kioku](../skills/kioku/SKILL.md) | 介绍 KiokuNet，按需指导 CLI 完整使用流程，不处理知识内容 | 无需初始化，普通节点与 Hub 均可安装 |
+| [kioku-curate](../skills/kioku-curate/SKILL.md) | Leader 的公共知识整理 | 已初始化为 Hub |
+
+```bash
+# 默认安装通用指南；可以在 init / join 前执行
+kioku skill install --runtime codex
+# 可选：在当前项目安装，运行命令前切换到目标项目目录
+kioku skill install --runtime pi --scope project
+# Hub 显式选择 Leader 整理 Skill
+kioku skill install --runtime hermes-agent --skill kioku-curate
+```
+
+`--runtime` 支持 `codex`、`hermes-agent`、`pi`、`universal`；`--scope` 默认 `global`，可选 `project`。`--source` 默认使用当前 CLI 包中的 Skill，也可显式指定其他可信仓库或本地目录。命令通过 `npx skills@1.7.2` 安装，需可用的 npm 网络或缓存；运行器按自己的安装规则发现和加载文件。
+
+默认安装项已从 `kioku-curate` 改为 `kioku`，原有 Leader 安装脚本应补上 `--skill kioku-curate`。通用指南只在明确涉及 KiokuNet 的使用或排障时触发，不响应泛泛的记忆请求，也不自动调用整理 Skill。文件访问仍无需 Skill。
+
+Leader 整理任务提供工作区 Raw/shared/allRaw 路径，由原有运行器调度。`doctor --runtime …` 目前仍仅在 Hub 检查 `kioku-curate` 文件是否存在，不验证实际加载，不作为通用指南的安装验证。
+
+## 开发验证
 
 开发验证通过公开 CLI、工作区实际文件操作和真实 Syncthing 节点。原生服务与外部 Skill 安装测试显式 opt-in；最新结果与平台限制见 [实现记录](implementation.md)。
