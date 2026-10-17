@@ -43,7 +43,7 @@ kioku enroll --receipt /path/to/mac.receipt.json
 
 初始化默认注册原生后台服务。Linux 使用 systemd user service，并要求 linger 以支持退出登录后的运行；macOS LaunchAgent 随用户登录运行。测试或临时运行可使用 `--service manual` 初始化，再执行 `kioku service start`。manual 不注册系统服务，退出登录或重启后的持久运行不作保证。
 
-后台进程同时管理 Syncthing、来源自动登记和 shared 副本刷新。管理 API 保持回环地址，只有同步 TCP 端口需要跨机器连接；不新增公网登记 API。
+后台进程同时管理 Syncthing、来源自动登记和 shared 副本刷新。Syncthing 管理 API 保持回环地址，机器同步使用固定 TCP 端口；不新增公网登记 API。Hub 可额外启用独立端口的 MCP 文件服务。
 
 ## 再创建来源
 
@@ -64,6 +64,8 @@ kioku source add --agent leader --role leader
 Hub 保存全部 Raw，其他节点只保存本机 Raw 和 shared。普通文件读写不需要 CLI、memory Skill 或运行时身份绑定。`context --agent ID` 可辅助查询来源路径；多个本地来源时必须显式选择，不从项目名或运行器名称猜测。
 
 ## 接入 Agent 工作区
+
+以下是本机工作区接入。无需本地目录链接的远程客户端使用 [Hub MCP](mcp.md)：在 Hub 登记身份、生成独立 Bearer 密钥并显式启用服务。普通 Agent 只写自己的 Hub Raw；Leader 可在其他机器运行，通过 MCP 维护 Hub shared。MCP 读取 shared 本体，由服务端拒绝普通 Agent 写入，原生工作区仍使用只读副本。
 
 在工作区父目录已存在后执行；以下入口名称可以自由选择：
 
@@ -105,7 +107,7 @@ kioku service stop
 kioku service files
 ```
 
-`status.view` 包含最后成功更新时间、内容指纹和刷新错误；`status.worker` 表示后台进程心跳与登记处理错误；来源登记状态在 `agents` 中。刷新失败保留上次成功副本，不降级到可写本体；故障解除后自动继续。停止服务不会删除已生成副本。
+`status.view` 包含最后成功更新时间、内容指纹和刷新错误；`status.worker` 表示后台进程心跳与登记处理错误；来源登记状态在 `agents` 中。`status.mcp` 单独展示 MCP 启用、运行及故障状态，端口冲突不会停止同步。刷新失败保留上次成功副本，不降级到可写本体；故障解除后自动继续。停止整个服务也停止 MCP，不会删除已生成副本或密钥。
 
 shared 内部的符号链接或特殊文件会导致刷新失败；排除 Syncthing 控制文件与临时文件。`.kioku-shared.json` 是 Hub 发布的网络标记，缺失时节点不会把尚未接收完成的空目录当成首次可用内容。副本保留一代过渡内容供切换期间的读取，之后清理；不是备份或历史恢复功能。
 

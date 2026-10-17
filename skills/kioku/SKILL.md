@@ -1,18 +1,18 @@
 ---
 name: kioku
-description: 介绍 KiokuNet 并使用其 CLI 完成安装、机器入网、来源登记、工作区接入、管理和排障。在用户明确提到 KiokuNet 的这些操作或遇到 kioku 命令错误时使用；普通记忆请求及知识内容处理不适用。
+description: 介绍 KiokuNet 并使用其 CLI 完成安装、机器入网、来源登记、工作区或 MCP 接入、管理和排障。在用户明确提到 KiokuNet 的这些操作或遇到 kioku 命令错误时使用；普通记忆请求及知识内容处理不适用。
 ---
 
 # KiokuNet 使用指南
 
-KiokuNet 是同一位用户的多个 Agent 共用的本地文件记忆网络。它将知识目录接入工作区，通过 Syncthing 在机器间同步当前文件。CLI 管理连接、目录入口和后台服务，不执行 Agent 任务，也不提供知识内容的写入、检索或提炼接口。
+KiokuNet 是同一位用户的多个 Agent 共用的本地文件记忆网络。它将知识目录接入工作区，通过 Syncthing 在机器间同步当前文件。CLI 管理连接、目录入口和后台服务，不执行 Agent 任务；Hub 可显式启用 MCP，向远程客户端提供文本读写和搜索工具。
 
 ## 先理解角色
 
 - **节点**是一台接入网络的机器；**Hub** 是汇集各来源 Raw、分发 shared 的中心节点。
 - **Agent 实例**是具有长期身份的助手；Codex、Hermes、Pi 是承载它的**运行器**，运行器名称不等于来源身份。
 - **来源目录**保存该来源的原始知识（Raw），只有一个写入节点。同机多个工作区可以接入同一来源。
-- **Leader** 是维护公共知识（shared）的 Agent 角色，当前必须位于 Hub；网络只能有一个活跃 Leader。Hub 可以没有 Agent。
+- **Leader** 是维护公共知识（shared）的 Agent 角色，身份在 Hub 登记，运行器可通过 MCP 远程执行；网络只能有一个活跃 Leader。Hub 可以没有 Agent。
 - **工作区入口**是指向目录的链接。普通来源接入自己的可写 Raw 和 shared 的只读副本；Leader 接入可写 shared，可选接入全部 Raw。
 
 机器入网、来源登记、工作区接入是三个独立步骤。普通文件访问不依赖本 Skill，也不需要每次调用 CLI 绑定身份。本 Skill 只解释目录用途、访问边界和 CLI 操作，不制定内容组织、读写、检索、合并或提炼规则；用户单独选择的 `kioku-curate` 负责 Leader 整理，本 Skill 不自动调用它。
@@ -27,6 +27,7 @@ KiokuNet 是同一位用户的多个 Agent 共用的本地文件记忆网络。�
 | --- | --- |
 | 安装 CLI/Skill、建立 Hub、加入已有网络、配置服务 | [安装与机器入网](references/setup.md) |
 | 创建来源、查询路径、接入普通或 Leader 工作区 | [来源与工作区](references/workspaces.md) |
+| 启停 Hub MCP、管理密钥、接入远程客户端 | [MCP 接入](references/mcp.md) |
 | 检查同步、登记或副本故障，启停后台服务 | [诊断与运行](references/operations.md) |
 | 解除入口、停用来源、撤销节点、跨机器迁移 | [退出与迁移](references/lifecycle.md) |
 

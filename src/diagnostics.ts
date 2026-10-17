@@ -8,6 +8,7 @@ import { viewStatus } from "./views.js";
 import { workerStatus } from "./services.js";
 import { checkWorkspaces } from "./workspace.js";
 import { findBinary, run } from "./process.js";
+import { mcpStatus } from "./mcp/config.js";
 export async function lastCuration(c: Config): Promise<unknown> {
   const leader = c.agents.find(
     (a) => a.local && a.active && a.role === "leader",
@@ -51,6 +52,14 @@ export async function diagnose(c: Config, home: string, runtime?: string) {
     c.sync.binary,
   );
   const sync = await syncStatus(c);
+  const mcp = await mcpStatus(home, c);
+  if (mcp.enabled)
+    check(
+      "mcp-running",
+      mcp.running && !mcp.error,
+      mcp.error ||
+        `MCP listener ${mcp.host}:${mcp.port}; public endpoint ${mcp.publicUrl || "not configured"}`,
+    );
   check("sync-running", sync.running, `Local API 127.0.0.1:${c.sync.guiPort}`);
   if (sync.running) {
     const cfg = await api(c, "config");

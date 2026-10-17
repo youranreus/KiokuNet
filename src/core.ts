@@ -17,6 +17,7 @@ import {
   sign,
   verify,
 } from "node:crypto";
+import type { McpConfig } from "./mcp/config.js";
 
 export class Failure extends Error {
   constructor(
@@ -214,6 +215,7 @@ export interface Config {
     listenPort: number;
   };
   workspaces?: Workspace[];
+  mcp?: McpConfig;
 }
 export async function load(home: string): Promise<Config> {
   const file = join(home, "config.json");

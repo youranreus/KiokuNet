@@ -13,6 +13,7 @@ import { online } from "./sync.js";
 import { registerSources } from "./registration.js";
 import { refreshView } from "./views.js";
 import { rm } from "node:fs/promises";
+import { McpRuntime } from "./mcp/runtime.js";
 
 const home = process.argv[2]!;
 const c = await load(home),
@@ -20,6 +21,7 @@ const c = await load(home),
 let stopping = false,
   exited = false,
   code = 0;
+const mcp = new McpRuntime(home);
 const child = spawn(
   c.sync.binary,
   [
@@ -52,7 +54,26 @@ const finished = new Promise<void>((resolve) => {
     resolve();
   });
 });
+let mcpTask: Promise<void> | undefined;
+const updateMcp = async () => {
+  try {
+    await mcp.reconcile(await load(home));
+  } catch {
+    console.error(
+      "MCP reconciliation failed; inspect MCP state and configuration permissions.",
+    );
+  }
+};
 try {
+  await updateMcp();
+  // Keep MCP configuration/heartbeats independent of potentially slow shared
+  // copying and registration, without holding the CLI configuration lock.
+  mcpTask = (async () => {
+    while (!stopping && !exited) {
+      await Promise.race([finished, new Promise((r) => setTimeout(r, 1000))]);
+      if (!stopping && !exited) await updateMcp();
+    }
+  })();
   while (!stopping && !exited) {
     let error: string | undefined;
     try {
@@ -91,6 +112,8 @@ try {
   const timer = setTimeout(() => {
     if (!exited) child.kill("SIGKILL");
   }, 5000);
+  await mcpTask;
+  await mcp.close();
   await finished;
   clearTimeout(timer);
   await rm(join(home, "worker.json"), { force: true });

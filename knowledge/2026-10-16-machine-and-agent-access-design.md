@@ -6,6 +6,8 @@
 - 决策来源：本仓库中的设计访谈，包括安装目录、机器入网、工作区接入，以及 shared 只读方案对比。
 - 关联决策：[ADR 0005](adr/0005-machine-enrollment-and-source-registration.md)、[ADR 0006](adr/0006-readonly-shared-workspace-copies.md)。
 
+> 2026-10-17 补充：[ADR 0007](adr/0007-hub-mcp-access.md) 增加 Hub MCP，允许 Leader 的运行器远程执行，shared 的写入归属仍在 Hub。本文保留机器与本机工作区方案；远程接入见 [MCP 使用指南](mcp.md)。
+
 ## 两个使用视角
 
 机器负责保存和同步知识，Agent 通过工作区入口使用知识。机器入网、来源登记和工作区接入是三个独立操作；安装 Hub 或其他节点时可以没有任何 Agent。

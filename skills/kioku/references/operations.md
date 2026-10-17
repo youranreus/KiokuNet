@@ -20,6 +20,7 @@ kioku service files --json
 | shared 未更新或首次接入失败 | 查看 `status.view` 的成功时间和错误、`status.sync` 以及 `status.worker` 心跳。首次副本需要收到 Hub 标记和内容；刷新失败会保留上次成功副本。 |
 | 工作区检查失败 | 用 `workspace list` 核对入口与来源，检查链接是否被替换、路径是否重叠或目标不可用。不要强制覆盖用户文件。 |
 | `LOCKED` | 检查是否有仍在执行的操作；确认原进程退出后再处理遗留锁，不直接删除活跃锁。 |
+| MCP 不可连接或 `MCP_NOT_READY` | 查看 `mcp status` 的 enabled/running/error；检查端口、反向代理与密钥状态，按 [MCP 接入](mcp.md) 排查。 |
 | Skill 安装 `PROCESS_FAILED` | 根据错误检查 npm 网络、缓存和安装目标权限；默认安装源为当前 CLI 包，可核对版本与打包内容。 |
 
 shared 副本中的符号链接或特殊文件会阻止刷新；报告具体问题交由内容维护者处理，本指南不删除或改写知识文件。故障解除后后台自动继续刷新，不需要把入口降级到可写本体。成功生成的副本与跨节点同步都可能短暂落后；本地成功不能替代远端状态验证。
@@ -32,4 +33,4 @@ kioku service restart --json
 kioku service stop --json
 ```
 
-停止会暂停同步、来源登记与副本刷新，保留已有文件和副本，不停止 Agent。只有在用户要求改变运行方式时才使用 `--service manual` 或 `--service native` 切换；普通重启沿用现有方式。检查 `service files` 返回的服务定义和相应日志，避免在报告中输出私钥或管理 API 凭据。
+停止会暂停同步、来源登记、副本刷新和已启用的 MCP，保留已有文件、副本和密钥，不停止 Agent。只有在用户要求改变运行方式时才使用 `--service manual` 或 `--service native` 切换；普通重启沿用现有方式。检查 `service files` 返回的服务定义和相应日志，避免在报告中输出私钥、Bearer 密钥或管理 API 凭据。

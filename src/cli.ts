@@ -19,6 +19,14 @@ import {
   addSource,
 } from "./network.js";
 import { viewStatus } from "./views.js";
+import {
+  configure,
+  createKey,
+  listKeys,
+  revokeKey,
+  mcpStatus,
+  McpSettings,
+} from "./mcp/config.js";
 import { syncStatus } from "./sync.js";
 import {
   start,
@@ -61,6 +69,12 @@ const help = `KiokuNet ${packageVersion} — personal agent memory network
   context [--agent ID]
   status | doctor
   service start|stop|restart|files
+  mcp enable [--host IP] [--port PORT] [--public-url https://HOST/mcp]
+    [--allowed-origins ORIGIN,ORIGIN] [--max-file-bytes N] [--max-keywords N]
+    [--max-results N] [--search-timeout-ms N]
+  mcp disable | mcp status
+  mcp key create --agent ID [--role member|leader]
+  mcp key list | mcp key revoke --key ID | mcp key rotate --key ID
   workspace attach --source RAW_DIR --raw-path PATH --shared-path PATH [--all-raw-path PATH]
   workspace detach --raw-path PATH
   workspace list | workspace check
@@ -100,6 +114,15 @@ const strings = [
   "all-raw-path",
   "user",
   "role",
+  "host",
+  "port",
+  "public-url",
+  "allowed-origins",
+  "max-file-bytes",
+  "max-keywords",
+  "max-results",
+  "search-timeout-ms",
+  "key",
 ];
 let json = process.argv.includes("--json");
 try {
@@ -109,7 +132,7 @@ try {
   options.help = { type: "boolean" };
   const parsed = parseArgs({ allowPositionals: true, options });
   const args = parsed.values as Record<string, string | boolean | undefined>;
-  const [command, sub] = parsed.positionals;
+  const [command, sub, action] = parsed.positionals;
   const cmd = command === "source" ? "agent" : command;
   const home = stateHome(args.home as string | undefined);
   if (args.help || !cmd) {
@@ -158,6 +181,8 @@ try {
     ["context", "status", "doctor"].includes(cmd) ||
     (cmd === "agent" && sub === "list") ||
     (cmd === "service" && sub === "files") ||
+    (cmd === "mcp" &&
+      (sub === "status" || (sub === "key" && action === "list"))) ||
     (cmd === "workspace" && ["list", "check"].includes(sub || ""));
   const perform = async (): Promise<unknown> => {
     if (cmd === "init") {
@@ -261,6 +286,82 @@ try {
       };
     }
     const c = await load(home);
+    if (cmd === "mcp") {
+      if (sub === "status") return mcpStatus(home, c);
+      if (sub === "key") {
+        if (action === "list") return { keys: listKeys(c) };
+        if (action === "create") {
+          const agent = await need("agent", "Hub Agent identity");
+          return createKey(
+            home,
+            c,
+            agent,
+            value("role") ||
+              c.agents.find((a) => a.id === agent)?.role ||
+              "member",
+          );
+        }
+        if (action === "revoke")
+          return revokeKey(home, c, await need("key", "Key ID"));
+        if (action === "rotate") {
+          const id = await need("key", "Key ID"),
+            key = listKeys(c).find((k) => k.id === id && !k.revokedAt);
+          requireThat(key, "UNKNOWN_KEY", "No active matching key.");
+          return createKey(home, c, key.agentId, key.role, id);
+        }
+      }
+      if (sub === "enable" || sub === "disable") {
+        const patch: Partial<McpSettings> = { enabled: sub === "enable" };
+        if (sub === "enable") {
+          if (value("host")) patch.host = value("host");
+          if (value("port")) patch.port = port("port");
+          if (value("public-url") !== undefined)
+            patch.publicUrl = value("public-url") || undefined;
+          if (value("allowed-origins") !== undefined)
+            patch.allowedOrigins = value("allowed-origins")!
+              .split(",")
+              .filter(Boolean);
+          for (const [flag, key] of [
+            ["max-file-bytes", "maxFileBytes"],
+            ["max-keywords", "maxKeywords"],
+            ["max-results", "maxResults"],
+            ["search-timeout-ms", "searchTimeoutMs"],
+          ] as const)
+            if (value(flag) !== undefined) patch[key] = Number(value(flag));
+        }
+        await configure(home, c, patch);
+        if (sub === "enable" && !(await workerStatus(home)))
+          await start(c, home);
+        if (!(await workerStatus(home))) {
+          requireThat(
+            sub === "disable",
+            "MCP_NOT_READY",
+            "MCP configuration saved, but the background worker stopped.",
+          );
+          return mcpStatus(home, c);
+        }
+        for (let i = 0; i < 60; i++) {
+          const state = await mcpStatus(home, c);
+          if (state.applied) {
+            requireThat(
+              !state.error && (sub === "disable" || state.running),
+              "MCP_NOT_READY",
+              `MCP configuration saved, but the listener is not ready: ${state.error || "stopped"}. Synchronization remains independent.`,
+            );
+            return state;
+          }
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        throw new Failure(
+          "MCP_NOT_READY",
+          "MCP configuration saved, but the worker has not applied it. Check mcp status and service logs.",
+        );
+      }
+      throw new Failure(
+        "USAGE",
+        "mcp enable|disable|status or mcp key create|list|revoke|rotate",
+      );
+    }
     if (cmd === "workspace") {
       if (sub === "attach")
         return attachWorkspace(home, c, {
@@ -365,6 +466,7 @@ try {
         sync: await syncStatus(c),
         view: await viewStatus(home),
         worker: await workerStatus(home),
+        mcp: await mcpStatus(home, c),
         curation: await lastCuration(c),
         serviceMode: c.serviceMode,
       };

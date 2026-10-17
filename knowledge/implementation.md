@@ -2,6 +2,25 @@
 
 > 本文记录当前实现与历史验收。当前操作见 [使用指南](usage.md)，决策见 [ADR 索引](adr/README.md)。下方旧版本记录保留历史事实，不能作为当前命令或权限要求。
 
+## Hub MCP 与远程 Leader（2026-10-17）
+
+按已确认的 MCP 访谈方案实现 [ADR 0007](adr/0007-hub-mcp-access.md)，完整操作见 [MCP 使用指南](mcp.md)。
+
+- Hub 显式启用的无会话 Streamable HTTP `/mcp`，默认关闭、监听地址和端口可配置；公网 HTTPS 由反向代理处理，支持外部 URL 与精确 Origin 允许列表。使用官方 TypeScript MCP SDK，不自行实现协议协商。
+- 本机命令生成、列出、撤销与原子轮换独立 Bearer 密钥；配置仅保存校验值。请求重新检查身份、角色、活跃状态及 Hub 写入归属；排队写入和提交前再次鉴权。
+- 普通 Agent 读写自己的 Hub Raw、只读 shared；Leader 读取全部活跃 Raw、写 shared，远端来源 Raw 禁写。虚拟路径拒绝目录穿越、链接、特殊文件和同步控制文件，大小写别名也不能访问控制文件。
+- 8 个工具覆盖目录分页、创建目录、UTF-8 文件读取/创建/全文替换/唯一文本替换、文件名与内容多关键词 any/all 搜索。版本校验与原子提交保护 MCP 内部并发；知识根内串行修改覆盖大小写路径别名。外部原生写入仍只能尽力检测。
+- 搜索直接扫描 Hub 本体，支持范围、大小写和结果上限，明确报告跳过、截断及超时。日志记录身份、路径、操作与结果，不记录密钥、正文或关键词。
+- MCP 在现有 worker 中有独立的配置与心跳循环，启停、调整端口无需重启同步；监听失败单独报告并重试，整个 service 停止时关闭 MCP。
+
+验证环境：macOS arm64、Node.js 24.14.1、Syncthing 2.1.6、MCP TypeScript SDK 1.32.1。执行 `KIOKU_TEST_NATIVE=1 KIOKU_TEST_SKILLS=1 node --test test/*.test.mjs test/integration/*.test.mjs`：**58 项通过，0 失败、0 跳过**。其中新增 14 项 MCP 协议/文件/鉴权测试和 2 项真实后台/同步集成测试；原生服务测试新增 MCP 启用与连续 5 次重启验证。TypeScript、Prettier、diff 空白检查及 npm 包内容检查通过。
+
+测试经真实 HTTP 和官方 SDK 客户端验证初始化、工具发现、调用、Origin、撤销、分块请求上限、错误响应、权限、并发版本、搜索完整性和日志脱敏；两个真实节点验证远端 Raw 在 Hub MCP 上只读、Leader 发布的 shared 正常分发。临时 macOS LaunchAgent 验证系统托管与重启；Skill 在隔离项目中实际安装。
+
+验证边界：没有部署用户的公开域名、证书或生产 Hub；没有运行 Codex/Claude Code 的实际模型会话，客户端示例依据官方配置文档，互操作验收使用官方 SDK。Linux systemd 本轮未做实机测试。原生服务在一次并行全量测试中出现 `launchctl bootstrap` 错误 5；随后完整 58 项与独立连续重启复测均通过，未能稳定复现，未修改既有 launchd 注册逻辑或声称根因已修复。保留连续重启测试以继续捕获该平台偶发情况。
+
+本功能随 v0.4.0 发布，验收未修改现有 KiokuNet 安装。`kioku-curate` 的现有本机工作区进度/锁流程没有自动迁移成 MCP 工作流；远程 Leader 使用 MCP 工具，并由运行器自行维护任务进度。
+
 ## 机器与 Agent 接入分离（2026-10-16）
 
 以 `7a12378d62e831df20ee56969f782ba4659ea221` 为基线实现 [接入设计](2026-10-16-machine-and-agent-access-design.md) 与 ADR 0005、0006。

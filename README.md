@@ -45,6 +45,8 @@ flowchart LR
 
 每个来源目录只有一个写入节点，支持离线访问和最终一致同步。多个工作区可以链接同一来源目录。系统只维护当前文件，不提供历史保存、快照或恢复；来源删除不自动撤回已经提炼的公共知识。
 
+Hub 还可显式启用 [MCP 服务](knowledge/mcp.md)，让 Codex、Claude Code 等远程客户端通过 Bearer 密钥列目录、读写文本和批量关键词搜索。普通 Agent 只写自己的 Hub Raw，Leader 可远程维护 shared，远端节点的 Raw 保持只读。公网 HTTPS 由反向代理提供。
+
 ## 安装
 
 需要 Node.js ≥ 22.20、npm，macOS 或 Linux（arm64 / amd64）。从 npm 安装：
@@ -118,6 +120,7 @@ Hub 上通过 `source add --agent leader --role leader` 创建 Leader。Leader �
 | 机器入网与 Agent 接入方案 | [2026-10-16 设计记录](knowledge/2026-10-16-machine-and-agent-access-design.md) |
 | 架构决策及替代关系 | [ADR 索引](knowledge/adr/README.md) |
 | 安装、配对、接入与运行状态 | [使用与运维指南](knowledge/usage.md) |
+| Hub MCP、密钥、客户端和公网部署 | [MCP 使用指南](knowledge/mcp.md) |
 | 目录接入历史决策，账号权限部分已被新方案替代 | [ADR 0004](knowledge/adr/0004-workspace-directories-and-current-state.md) |
 | Agent 了解 KiokuNet 和使用 CLI | [kioku](skills/kioku/SKILL.md) |
 | Leader 如何提炼当前文件 | [kioku-curate](skills/kioku-curate/SKILL.md) |

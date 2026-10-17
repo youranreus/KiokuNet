@@ -61,8 +61,22 @@ test(
       // Use the CLI's explicit service mode update to register this isolated node.
       call(home, ["service", "start", "--service", "native"]);
       assert.equal(call(home, ["status"]).sync.running, true);
+      call(home, [
+        "mcp",
+        "enable",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(await port()),
+      ]);
+      assert.equal(call(home, ["mcp", "status"]).running, true);
+      for (let i = 0; i < 5; i++) {
+        call(home, ["service", "restart"]);
+        assert.equal(call(home, ["mcp", "status"]).running, true);
+      }
       call(home, ["service", "stop", "--service", "manual"]);
       assert.equal(call(home, ["status"]).sync.running, false);
+      assert.equal(call(home, ["mcp", "status"]).running, false);
       assert.equal(call(home, ["status"]).serviceMode, "manual");
       for (const f of files)
         await assert.rejects(access(f.path), { code: "ENOENT" });
