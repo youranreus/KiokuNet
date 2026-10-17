@@ -30,6 +30,8 @@ kioku mcp oauth approve --agent chatgpt
 
 ## HTTPS 与反向代理
 
+对 ChatGPT 网页版优先使用标准 HTTPS 443 入口，例如 `https://knowledge.example.com/mcp`。Kioku 自身监听 HTTP；`--public-url` 只配置公开地址，不会启用 TLS。反向代理负责证书与 HTTPS，可把 443 转发到本机任意空闲 HTTP 端口。
+
 OAuth 要求配置 HTTPS `publicUrl`，授权服务器与 `/mcp` 同源，部署在独立域名根路径。除 `/mcp` 外，必须转发下列端点，保留请求方法、查询参数、Cookie、Origin 和响应 Set-Cookie：
 
 | 路径 | 用途 |
@@ -118,6 +120,16 @@ kioku mcp oauth enable
 
 当前产品没有自动备份恢复入口。任意整机快照若同时恢复全部授权状态，服务无法自行知道发生了回滚；不能省略上述离线重置步骤，也不能把复制旧 `state.json` 当成安全恢复。
 
+## ChatGPT 无法发现 OAuth 设置
+
+先检查公开地址的两个发现端点是否返回 JSON，以及未认证的 `/mcp` 是否返回带 `resource_metadata` 的 401。再查看代理日志是否收到 ChatGPT 的发现和 `/register` 请求。本机能够访问不代表 ChatGPT 服务端也能访问。
+
+若非标准 HTTPS 端口在本机正常，但 ChatGPT 提示发现失败或“创建应用所需的某项服务暂时不可用”，可用同域名的 443 入口做对照。切换时同时更新 Hub 的 `--public-url` 和 ChatGPT 的服务器 URL，让资源、issuer 和全部 OAuth 端点保持一致；已有 OAuth 授权会因公开地址改变而失效。手动填写端点不能解决服务端网络不通。
+
+2026-10-17 实机排查中，同一部署通过 7331 接入时发现和创建失败，切换 443 后自动发现、DCR 和授权页跳转成功。此结果支持该部署存在端口相关的访问问题，但不能据此断言所有 ChatGPT MCP 连接都禁止非标准端口，也未确定限制发生于 OpenAI 出站端还是中间网络。
+
+若授权表单提示 `Submit authorization from this Hub's page.`，检查 HTML 响应的 `Referrer-Policy`。浏览器在 `no-referrer` 策略下提交表单会发送 `Origin: null`，与 Hub 的精确 Origin 校验冲突。授权 HTML 使用 `same-origin`，既保留同源表单的 Origin，又不向跨源回调发送 Referer；不可通过接受 `Origin: null` 或关闭来源校验解决。参见 [MDN 对 Origin 的说明](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Referrer-Policy#effect_on_the_origin_header)。0.4.1 的授权 HTML 存在此问题，0.4.2 已修复；升级后执行 `kioku service restart` 加载修复。
+
 ## 验证边界
 
-自动化测试覆盖真实 HTTP、官方 MCP SDK 的发现/DCR/PKCE/自动刷新、角色权限、浏览器绑定、闲置、撤销、令牌重放、重启和恢复操作。尚未以用户真实 ChatGPT 账号、公开域名和 TLS 反向代理完成实机验收。具体测试执行记录见 [实现记录](implementation.md)。
+自动化测试覆盖真实 HTTP、官方 MCP SDK 的发现/DCR/PKCE/自动刷新、角色权限、浏览器绑定、闲置、撤销、令牌重放、重启和恢复操作。2026-10-17 使用真实 ChatGPT 账号、公开域名和 TLS 反向代理，在修复授权 HTML 的 Referrer-Policy 后，已验证自动发现、DCR、浏览器批准、令牌交换及工具列表加载（4 个读取工具、4 个写入工具）；实际知识工具读写及长期自动刷新尚未完成实机验收。具体测试执行记录见 [实现记录](implementation.md)。

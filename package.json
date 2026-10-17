@@ -1,6 +1,6 @@
 {
   "name": "@reus-able/kioku-net",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Local-first shared memory for personal agents",
   "repository": {
     "type": "git",

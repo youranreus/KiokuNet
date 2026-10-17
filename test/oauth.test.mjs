@@ -152,6 +152,8 @@ test("consent binds browser, checks origin, consumes credentials once, displays 
   assert.match(flow.html, /&lt;script&gt;/);
   assert.doesNotMatch(flow.html, /<script>/);
   assert.match(flow.response.headers.get("set-cookie"), /Secure/);
+  // HTML form POSTs under no-referrer send Origin: null in browsers.
+  assert.equal(flow.response.headers.get("referrer-policy"), "same-origin");
   assert.match(
     flow.response.headers.get("content-security-policy"),
     /frame-ancestors 'none'/,
@@ -172,11 +174,22 @@ test("consent binds browser, checks origin, consumes credentials once, displays 
     400,
   );
   assert.equal(
+    (
+      await f.consent(
+        flow,
+        { action: "review", credential },
+        { Origin: "null" },
+      )
+    ).status,
+    400,
+  );
+  assert.equal(
     (await f.consent(flow, { action: "approve", name: "bypass" })).status,
     400,
   );
   const review = await f.consent(flow, { action: "review", credential });
   assert.equal(review.status, 200);
+  assert.equal(review.headers.get("referrer-policy"), "same-origin");
   assert.match(
     review.headers.get("content-security-policy"),
     /form-action 'self' https:\/\/chatgpt.com;/,

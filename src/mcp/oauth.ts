@@ -47,6 +47,9 @@ function page(res: Response, content: string, redirectUri?: string) {
   // Browsers also check the destination of a form's OAuth redirect. Permit
   // only the registered callback origin, while keeping all other resources off.
   res.set("Content-Security-Policy", contentPolicy(redirectUri));
+  // no-referrer makes browsers send Origin: null on HTML form POSTs, which
+  // breaks the exact-origin consent check. Keep referrers within this Hub.
+  res.set("Referrer-Policy", "same-origin");
   res
     .type("html")
     .send(
