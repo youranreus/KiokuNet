@@ -1,6 +1,6 @@
 {
   "name": "@reus-able/kioku-net",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Local-first shared memory for personal agents",
   "repository": {
     "type": "git",
@@ -42,12 +42,14 @@
     "release:tags": "git tag --list 'v*' --sort=-version:refname"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^22.0.0",
     "prettier": "3.6.2",
     "typescript": "^5.9.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
+    "express": "^5.3.0",
     "zod": "^4.6.7"
   }
 }

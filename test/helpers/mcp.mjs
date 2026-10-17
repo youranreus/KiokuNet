@@ -36,7 +36,7 @@ export async function call(client, name, args) {
     ...JSON.parse(response.content[0].text),
   };
 }
-export async function fixture(t) {
+export async function fixture(t, mcpSettings = {}) {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "kioku-mcp-"))),
     home = join(dir, "config");
   const clients = [];
@@ -94,7 +94,13 @@ export async function fixture(t) {
         registration: "registered",
       },
     ],
-    mcp: { ...defaults, enabled: true, host: "127.0.0.1", keys: [] },
+    mcp: {
+      ...defaults,
+      enabled: true,
+      host: "127.0.0.1",
+      keys: [],
+      ...mcpSettings,
+    },
   };
   for (const a of c.agents)
     await mkdir(join(c.root, "agents", a.id, "raw"), { recursive: true });

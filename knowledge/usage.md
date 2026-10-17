@@ -65,7 +65,7 @@ Hub 保存全部 Raw，其他节点只保存本机 Raw 和 shared。普通文件
 
 ## 接入 Agent 工作区
 
-以下是本机工作区接入。无需本地目录链接的远程客户端使用 [Hub MCP](mcp.md)：在 Hub 登记身份、生成独立 Bearer 密钥并显式启用服务。普通 Agent 只写自己的 Hub Raw；Leader 可在其他机器运行，通过 MCP 维护 Hub shared。MCP 读取 shared 本体，由服务端拒绝普通 Agent 写入，原生工作区仍使用只读副本。
+以下是本机工作区接入。无需本地目录链接的远程客户端使用 [Hub MCP](mcp.md)：在 Hub 登记身份、生成独立 Bearer 密钥并显式启用服务。ChatGPT 网页版使用 [OAuth 连接授权](oauth.md)，在 Hub 本机生成一次性批准凭证。普通 Agent 只写自己的 Hub Raw；Leader 可在其他机器运行，通过 MCP 维护 Hub shared。MCP 读取 shared 本体，由服务端拒绝普通 Agent 写入，原生工作区仍使用只读副本。
 
 在工作区父目录已存在后执行；以下入口名称可以自由选择：
 

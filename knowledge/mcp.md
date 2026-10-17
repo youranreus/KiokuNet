@@ -1,8 +1,8 @@
 # Hub MCP 使用指南
 
-[使用与运维](usage.md) · [ADR 0007](adr/0007-hub-mcp-access.md)
+[使用与运维](usage.md) · [OAuth 与 ChatGPT](oauth.md) · [ADR 0007](adr/0007-hub-mcp-access.md)
 
-Hub 可为个人可信客户端提供远程文件和搜索工具。MCP 默认关闭，现有安装无需修改配置；启用后与后台服务一起运行。客户端机器不需要成为 Syncthing 节点，也不需要工作区链接。首批客户端为 Codex、Claude Code，使用手动 Bearer 密钥。
+Hub 可为个人可信客户端提供远程文件和搜索工具。MCP 默认关闭，现有安装无需修改配置；启用后与后台服务一起运行。客户端机器不需要成为 Syncthing 节点，也不需要工作区链接。Codex、Claude Code 可使用手动 Bearer 密钥；ChatGPT 网页版可通过显式启用的 [OAuth](oauth.md) 接入。
 
 ## 身份和密钥
 
@@ -52,11 +52,11 @@ location = /mcp {
 
 域名、TLS 证书和外部端口在现有代理中配置；调整文件上限时同时调整代理请求大小上限。代理与后端不在同机时使用受保护的后端链路。
 
-携带 Origin 的请求必须匹配允许列表，否则返回 403；无 Origin 的客户端可以正常鉴权。自动允许公网地址的 Origin、回环 Origin 和具体监听主机的 Origin。额外来源用 `--allowed-origins https://client.example.com,https://other.example.com`，只接受精确 HTTP(S) Origin，不接受通配符。空字符串清空额外列表；`--public-url ''` 清除外部地址。服务面向桌面/命令行客户端，不实现浏览器 CORS 或 OAuth 登录发现。
+携带 Origin 的 MCP 请求必须匹配允许列表，否则返回 403；无 Origin 的客户端可以正常鉴权。自动允许公网地址的 Origin、回环 Origin 和具体监听主机的 Origin。额外来源用 `--allowed-origins https://client.example.com,https://other.example.com`，只接受精确 HTTP(S) Origin，不接受通配符。空字符串清空额外列表；`--public-url ''` 清除外部地址，启用 OAuth 时需先关闭 OAuth 才能清除。`/mcp` 不提供浏览器 CORS；OAuth 发现、注册和令牌端点沿用 SDK 的 CORS，浏览器授权表单另有同源检查。OAuth 的代理端点不能只配置 `/mcp`，见 [部署说明](oauth.md#https-与反向代理)。
 
 启用会在必要时启动现有后台服务；已运行时独立重新配置 MCP，不重启 Syncthing。关闭 MCP 不停止同步。`service stop` 同时停止 MCP、同步、登记和副本刷新；重启恢复此前启用状态和密钥。manual 模式仍不保证登出/重启持久运行，native 沿用现有系统服务。
 
-`mcp status` 和 `status.mcp` 显示 `enabled`、`running`、`applied`、`error`、更新时间和未撤销密钥数量。端口占用时启用命令返回 `MCP_NOT_READY`，配置保留、同步继续，后台每约 5 秒重试。`doctor` 在已启用时检查 MCP 状态。
+`mcp status` 和 `status.mcp` 显示 `enabled`、`oauthEnabled`、`running`、`applied`、`error`、更新时间和未撤销静态密钥数量；OAuth 连接使用 `mcp oauth list` 查看。端口占用时启用命令返回 `MCP_NOT_READY`，配置保留、同步继续，后台每约 5 秒重试。`doctor` 在已启用时检查 MCP 状态。
 
 ## 客户端配置
 

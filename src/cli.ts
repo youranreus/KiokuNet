@@ -29,6 +29,12 @@ import {
 } from "./mcp/config.js";
 import { syncStatus } from "./sync.js";
 import {
+  createApproval,
+  listConnections,
+  resetOAuth,
+  revokeConnection,
+} from "./mcp/oauth-store.js";
+import {
   start,
   stop,
   unregister,
@@ -75,6 +81,10 @@ const help = `KiokuNet ${packageVersion} — personal agent memory network
   mcp disable | mcp status
   mcp key create --agent ID [--role member|leader]
   mcp key list | mcp key revoke --key ID | mcp key rotate --key ID
+  mcp oauth enable|disable
+  mcp oauth approve --agent ID
+  mcp oauth list | mcp oauth revoke --connection ID
+  mcp oauth reset --confirm oauth
   workspace attach --source RAW_DIR --raw-path PATH --shared-path PATH [--all-raw-path PATH]
   workspace detach --raw-path PATH
   workspace list | workspace check
@@ -123,6 +133,7 @@ const strings = [
   "max-results",
   "search-timeout-ms",
   "key",
+  "connection",
 ];
 let json = process.argv.includes("--json");
 try {
@@ -287,7 +298,53 @@ try {
     }
     const c = await load(home);
     if (cmd === "mcp") {
+      const waitApplied = async () => {
+        for (let i = 0; i < 60; i++) {
+          const state = await mcpStatus(home, c);
+          if (state.applied) {
+            requireThat(
+              !state.error && (!state.enabled || state.running),
+              "MCP_NOT_READY",
+              `MCP configuration saved, but the listener is not ready: ${state.error || "stopped"}. Synchronization remains independent.`,
+            );
+            return state;
+          }
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        throw new Failure(
+          "MCP_NOT_READY",
+          "MCP configuration saved, but the worker has not applied it. Check mcp status and service logs.",
+        );
+      };
       if (sub === "status") return mcpStatus(home, c);
+      if (sub === "oauth") {
+        if (action === "enable" || action === "disable") {
+          await configure(home, c, { oauthEnabled: action === "enable" });
+          return (await workerStatus(home))
+            ? waitApplied()
+            : mcpStatus(home, c);
+        }
+        if (action === "approve")
+          return createApproval(
+            home,
+            await need("agent", "Hub Agent identity"),
+          );
+        if (action === "list")
+          return { connections: await listConnections(home) };
+        if (action === "revoke")
+          return revokeConnection(
+            home,
+            await need("connection", "Connection ID"),
+          );
+        if (action === "reset") {
+          requireThat(
+            value("confirm") === "oauth",
+            "CONFIRM_REQUIRED",
+            "Pass --confirm oauth to invalidate all OAuth clients and connections.",
+          );
+          return resetOAuth(home);
+        }
+      }
       if (sub === "key") {
         if (action === "list") return { keys: listKeys(c) };
         if (action === "create") {
@@ -340,26 +397,11 @@ try {
           );
           return mcpStatus(home, c);
         }
-        for (let i = 0; i < 60; i++) {
-          const state = await mcpStatus(home, c);
-          if (state.applied) {
-            requireThat(
-              !state.error && (sub === "disable" || state.running),
-              "MCP_NOT_READY",
-              `MCP configuration saved, but the listener is not ready: ${state.error || "stopped"}. Synchronization remains independent.`,
-            );
-            return state;
-          }
-          await new Promise((r) => setTimeout(r, 200));
-        }
-        throw new Failure(
-          "MCP_NOT_READY",
-          "MCP configuration saved, but the worker has not applied it. Check mcp status and service logs.",
-        );
+        return waitApplied();
       }
       throw new Failure(
         "USAGE",
-        "mcp enable|disable|status or mcp key create|list|revoke|rotate",
+        "mcp enable|disable|status, mcp key create|list|revoke|rotate, or mcp oauth enable|disable|approve|list|revoke|reset",
       );
     }
     if (cmd === "workspace") {

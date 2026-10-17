@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createServer } from "node:net";
 import { cli, connect, call } from "../helpers/mcp.mjs";
 import { removeFixture } from "../helpers/files.mjs";
+import { oauthEndpoints } from "../helpers/oauth.mjs";
 
 async function reserve() {
   const server = createServer();
@@ -91,10 +92,30 @@ test(
     await assert.rejects(() => fetch(url));
     assert.equal(ok(home, ["mcp", "enable"]).running, true);
     assert.equal(ok(home, ["status"]).worker.pid, pid);
+    ok(home, ["mcp", "oauth", "enable"]);
+    const oauth = oauthEndpoints({ home: join(home, "config"), url });
+    const oauthGrant = await oauth.grant();
     ok(home, ["service", "restart"]);
     const restarted = ok(home, ["mcp", "status"]);
     assert.equal(restarted.running, true);
     assert.equal(restarted.keyCount, 1);
+    assert.equal(restarted.oauthEnabled, true);
+    assert.equal(
+      (await oauth.access(oauthGrant.tokens.access_token)).status,
+      405,
+    );
+    const refreshed = await oauth.refresh(oauthGrant);
+    assert.equal(refreshed.status, 200);
+    const oauthClient = await connect(
+      url,
+      (await refreshed.json()).access_token,
+    );
+    clients.push(oauthClient);
+    assert.equal(
+      (await call(oauthClient, "read_file", { path: "/raw/writer/live.md" }))
+        .content,
+      "created remotely",
+    );
     client = await connect(url, key.token);
     clients.push(client);
     assert.equal(

@@ -11,11 +11,13 @@ import {
   validId,
 } from "../core.js";
 
-export interface McpKey {
+export interface IdentityBinding {
   id: string;
   agentId: string;
   role: "member" | "leader";
   sourceId?: string;
+}
+export interface McpKey extends IdentityBinding {
   hash: string;
   createdAt: string;
   revokedAt?: string;
@@ -30,6 +32,7 @@ export interface McpSettings {
   maxKeywords: number;
   maxResults: number;
   searchTimeoutMs: number;
+  oauthEnabled: boolean;
 }
 export interface McpConfig extends McpSettings {
   keys: McpKey[];
@@ -43,6 +46,7 @@ export const defaults: McpSettings = {
   maxKeywords: 32,
   maxResults: 200,
   searchTimeoutMs: 10000,
+  oauthEnabled: false,
 };
 export function settings(c: Config): McpSettings {
   const { keys: _, ...value } = c.mcp || { ...defaults, keys: [] };
@@ -56,7 +60,7 @@ export function hubOnly(c: Config) {
     "MCP is only available on the Hub.",
   );
 }
-function binding(
+export function binding(
   c: Config,
   key: Pick<McpKey, "agentId" | "role" | "sourceId">,
 ) {
@@ -138,6 +142,10 @@ export async function authenticate(home: string, authorization?: string) {
   const c = await load(home);
   if (c.mode !== "hub" || !settings(c).enabled)
     throw new Failure("UNAUTHORIZED", "Invalid or revoked bearer token.");
+  if (/^Bearer kioku_at_/i.test(authorization || "")) {
+    const { authenticateOAuth } = await import("./oauth-store.js");
+    return authenticateOAuth(home, authorization!.slice(7));
+  }
   const match = /^Bearer (kioku_([a-f0-9]{16})_[A-Za-z0-9_-]{43})$/i.exec(
     authorization || "",
   );
@@ -215,6 +223,11 @@ export async function configure(
     );
     next.publicUrl = url.toString();
   }
+  requireThat(
+    !next.oauthEnabled || next.publicUrl,
+    "INVALID_URL",
+    "OAuth requires an HTTPS public URL; configure --public-url first.",
+  );
   for (const origin of next.allowedOrigins) {
     const url = urlValue(origin, "INVALID_ORIGIN");
     requireThat(

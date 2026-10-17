@@ -15,7 +15,7 @@ import { join, dirname, basename } from "node:path";
 import { randomUUID } from "node:crypto";
 import { setImmediate } from "node:timers/promises";
 import { Config, Failure, requireThat, sha } from "../core.js";
-import { McpKey, McpSettings, settings } from "./config.js";
+import { IdentityBinding, McpSettings, settings } from "./config.js";
 
 export function hidden(name: string) {
   // Keep controls inaccessible through case aliases on macOS filesystems.
@@ -34,7 +34,7 @@ type Root = {
   source: string;
   writable: boolean;
 };
-export function roots(c: Config, key: McpKey): Root[] {
+export function roots(c: Config, key: IdentityBinding): Root[] {
   return [
     {
       path: "/shared",
@@ -118,7 +118,7 @@ export class KnowledgeFiles {
   private visible: Root[];
   constructor(
     private c: Config,
-    private key: McpKey,
+    private key: IdentityBinding,
     private reauthorize: () => Promise<void> = async () => {},
   ) {
     this.limits = settings(c);

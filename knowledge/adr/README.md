@@ -11,6 +11,7 @@
 | [0005 机器入网与来源登记分离](0005-machine-enrollment-and-source-registration.md) | 2026-10-16 | 已实现；Leader 运行地点限制由 0007 调整 |
 | [0006 shared 只读副本与工作区防误写](0006-readonly-shared-workspace-copies.md) | 2026-10-16 | 已实现，验收见 [实现记录](../implementation.md) |
 | [0007 Hub MCP 接入与远程 Leader](0007-hub-mcp-access.md) | 2026-10-17 | 已接受；实现与验证见 [实现记录](../implementation.md) |
+| [0008 Hub OAuth 连接授权](0008-hub-oauth-connections.md) | 2026-10-17 | 已接受；扩展 0007 的凭据签发，保留静态密钥与本机管理边界 |
 
 机器与工作区方案见 [机器入网与 Agent 工作区接入设计](../2026-10-16-machine-and-agent-access-design.md)，覆盖统一安装根、离线来源登记、副本更新与失败行为；新增远程接入见 [Hub MCP 使用指南](../mcp.md)。首版历史背景见 [2026-10-15 设计记录](../2026-10-15-design-record.md)。
 

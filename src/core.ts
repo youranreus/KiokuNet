@@ -155,6 +155,7 @@ export interface Agent {
   seedHash?: string;
   registration?: "pending" | "registered" | "conflict";
   registrationError?: string;
+  authorizationRevision?: string;
 }
 export interface Peer {
   deviceId: string;
@@ -229,8 +230,37 @@ export async function load(home: string): Promise<Config> {
   );
   return c;
 }
-export const save = (home: string, c: Config) =>
-  atomicJson(join(home, "config.json"), c);
+export async function save(home: string, c: Config) {
+  // A disable/re-enable or role/ownership round trip must not resurrect grants.
+  let previous: Config | undefined;
+  try {
+    previous = await readJson<Config>(join(home, "config.json"));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+  }
+  const fingerprint = (config: Config, a: Agent) =>
+    JSON.stringify([
+      config.networkId,
+      config.deviceId,
+      config.root,
+      config.mode,
+      config.mcp?.publicUrl,
+      a.id,
+      a.role,
+      a.deviceId,
+      a.local,
+      a.active,
+      a.registration === "conflict",
+    ]);
+  for (const agent of c.agents) {
+    const old = previous?.agents.find((a) => a.id === agent.id);
+    agent.authorizationRevision =
+      previous && old && fingerprint(previous, old) === fingerprint(c, agent)
+        ? old.authorizationRevision || randomUUID()
+        : randomUUID();
+  }
+  await atomicJson(join(home, "config.json"), c);
+}
 export function ownAgent(c: Config, explicit?: string): Agent {
   const env = process.env.KIOKU_AGENT_ID;
   requireThat(

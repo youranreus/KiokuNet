@@ -4,9 +4,17 @@ import { dirname, join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
-import { Failure, requireThat } from "../core.js";
+import { Failure, load, requireThat } from "../core.js";
 import { authenticate, McpSettings, settings } from "./config.js";
 import { fileError, KnowledgeFiles } from "./files.js";
+import { createOAuthApp } from "./oauth.js";
+import { recordOAuthActivity, SCOPE } from "./oauth-store.js";
+
+function challenge(config: McpSettings) {
+  return config.oauthEnabled && config.publicUrl
+    ? `Bearer resource_metadata="${new URL("/.well-known/oauth-protected-resource/mcp", config.publicUrl).href}", scope="${SCOPE}"`
+    : 'Bearer realm="kiokunet"';
+}
 
 const pathSchema = z
   .string()
@@ -57,6 +65,7 @@ async function protocolServer(
     const fresh = await authenticate(home, authorization);
     requireThat(
       fresh.c.root === c.root &&
+        fresh.key.agentId === key.agentId &&
         fresh.key.role === key.role &&
         fresh.key.sourceId === key.sourceId,
       "UNAUTHORIZED",
@@ -79,6 +88,7 @@ async function protocolServer(
     try {
       await reauthorize();
       const data = await fn();
+      await recordOAuthActivity(home, authorization);
       return {
         content: [{ type: "text" as const, text: JSON.stringify(data) }],
         structuredContent: data,
@@ -89,6 +99,9 @@ async function protocolServer(
       const data = { error: { code: error.code, message: error.message } };
       return {
         isError: true,
+        ...(error.code === "UNAUTHORIZED" && settings(c).oauthEnabled
+          ? { _meta: { "mcp/www_authenticate": [challenge(settings(c))] } }
+          : {}),
         content: [{ type: "text" as const, text: JSON.stringify(data) }],
         structuredContent: data,
       };
@@ -233,14 +246,17 @@ async function protocolServer(
   );
   return server;
 }
-function response(res: ServerResponse, status: number, message: string) {
+function response(
+  res: ServerResponse,
+  status: number,
+  message: string,
+  authenticateHeader = 'Bearer realm="kiokunet"',
+) {
   res.writeHead(status, {
     "Content-Type": "application/json",
     "Cache-Control": "no-store",
     Connection: "close",
-    ...(status === 401
-      ? { "WWW-Authenticate": 'Bearer realm="kiokunet"' }
-      : {}),
+    ...(status === 401 ? { "WWW-Authenticate": authenticateHeader } : {}),
     ...(status === 405 ? { Allow: "POST" } : {}),
   });
   res.end(JSON.stringify({ error: message }));
@@ -271,6 +287,9 @@ export async function startMcpServer(home: string, options: McpSettings) {
     await readFile(new URL("../../package.json", import.meta.url), "utf8"),
   ).version as string;
   let active = 0;
+  let oauthApp:
+    | { resource: string; app: ReturnType<typeof createOAuthApp> }
+    | undefined;
   const controllers = new Set<AbortController>();
   const inFlight = new Set<Promise<void>>();
   const server = createServer(
@@ -285,7 +304,36 @@ export async function startMcpServer(home: string, options: McpSettings) {
     },
   );
   async function handle(req: IncomingMessage, res: ServerResponse) {
+    const configNow = settings(await load(home));
     if (req.url !== "/mcp") {
+      if (configNow.enabled && configNow.oauthEnabled && configNow.publicUrl) {
+        if (active >= 32) {
+          response(res, 503, "MCP is busy; retry later.");
+          return;
+        }
+        if (!oauthApp || oauthApp.resource !== configNow.publicUrl)
+          oauthApp = {
+            resource: configNow.publicUrl,
+            app: createOAuthApp(home, configNow.publicUrl),
+          };
+        active++;
+        const timer = setTimeout(() => {
+          if (!res.headersSent) response(res, 408, "Request timed out.");
+          req.destroy();
+        }, 30000);
+        timer.unref();
+        try {
+          await new Promise<void>((resolve) => {
+            res.once("close", resolve);
+            res.once("finish", resolve);
+            oauthApp!.app(req, res);
+          });
+        } finally {
+          active--;
+          clearTimeout(timer);
+        }
+        return;
+      }
       response(res, 404, "Not found.");
       return;
     }
@@ -293,7 +341,12 @@ export async function startMcpServer(home: string, options: McpSettings) {
     try {
       current = await authenticate(home, req.headers.authorization);
     } catch {
-      response(res, 401, "Invalid or revoked bearer token.");
+      response(
+        res,
+        401,
+        "Invalid or revoked bearer token.",
+        challenge(configNow),
+      );
       return;
     }
     const config = settings(current.c);
@@ -367,6 +420,7 @@ export async function startMcpServer(home: string, options: McpSettings) {
               ? 401
               : 400,
           e instanceof Failure ? e.message : "Invalid MCP request.",
+          challenge(configNow),
         );
     } finally {
       clearTimeout(timer);
