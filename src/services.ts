@@ -2,7 +2,8 @@ import { mkdir, writeFile, open, rm } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
-import { spawn } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   Config,
   sha,
@@ -15,6 +16,30 @@ import {
 import { api, online, reconcile } from "./sync.js";
 import { run } from "./process.js";
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const exec = promisify(execFile);
+
+async function launchAgentLoaded(target: string): Promise<boolean> {
+  try {
+    await exec("launchctl", ["print", target]);
+    return true;
+  } catch (error) {
+    // launchctl print returns 113 when the specific service is absent.
+    if ((error as { code?: number | string }).code === 113) return false;
+    throw error;
+  }
+}
+
+async function unloadLaunchAgent(target: string): Promise<void> {
+  if (!(await launchAgentLoaded(target))) return;
+  await run("launchctl", ["bootout", target]);
+  // bootout can return while the old job is still SIGTERMed. Re-registering
+  // that label before launchd finishes removal fails with bootstrap error 5.
+  for (let i = 0; i < 100; i++) {
+    if (!(await launchAgentLoaded(target))) return;
+    await pause(100);
+  }
+  throw new Failure("SERVICE_NOT_STOPPED", "LaunchAgent is still unloading.");
+}
 const label = (home: string) => `kiokunet-${sha(home).slice(0, 12)}`;
 const escapeXml = (s: string) =>
   s.replace(
@@ -147,9 +172,7 @@ export async function start(c: Config, home: string): Promise<void> {
       for (const f of serviceFiles(c, home)) {
         const job = `${id}.sync`;
         // Reload only our own registered job; a missing job is not an error.
-        try {
-          await run("launchctl", ["bootout", `${domain}/${job}`]);
-        } catch {}
+        await unloadLaunchAgent(`${domain}/${job}`);
         await run("launchctl", ["bootstrap", domain, f.path]);
       }
     } else {
@@ -174,12 +197,7 @@ export async function stop(c: Config, home: string): Promise<void> {
     const id = label(home);
     if (process.platform === "darwin") {
       for (const suffix of ["sync"]) {
-        try {
-          await run("launchctl", [
-            "bootout",
-            `gui/${process.getuid!()}/${id}.${suffix}`,
-          ]);
-        } catch {}
+        await unloadLaunchAgent(`gui/${process.getuid!()}/${id}.${suffix}`);
       }
     } else {
       await run("systemctl", ["--user", "stop", `${id}.service`]);

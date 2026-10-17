@@ -13,11 +13,11 @@
 - 搜索直接扫描 Hub 本体，支持范围、大小写和结果上限，明确报告跳过、截断及超时。日志记录身份、路径、操作与结果，不记录密钥、正文或关键词。
 - MCP 在现有 worker 中有独立的配置与心跳循环，启停、调整端口无需重启同步；监听失败单独报告并重试，整个 service 停止时关闭 MCP。
 
-验证环境：macOS arm64、Node.js 24.14.1、Syncthing 2.1.6、MCP TypeScript SDK 1.32.1。执行 `KIOKU_TEST_NATIVE=1 KIOKU_TEST_SKILLS=1 node --test test/*.test.mjs test/integration/*.test.mjs`：**58 项通过，0 失败、0 跳过**。其中新增 14 项 MCP 协议/文件/鉴权测试和 2 项真实后台/同步集成测试；原生服务测试新增 MCP 启用与连续 5 次重启验证。TypeScript、Prettier、diff 空白检查及 npm 包内容检查通过。
+验证环境：macOS arm64、Node.js 24.14.1、Syncthing 2.1.6、MCP TypeScript SDK 1.32.1。执行 `KIOKU_TEST_NATIVE=1 KIOKU_TEST_SKILLS=1 node --test test/*.test.mjs test/integration/*.test.mjs`：**58 项通过，0 失败、0 跳过**。其中新增 14 项 MCP 协议/文件/鉴权测试和 2 项真实后台/同步集成测试；原生服务测试新增 MCP 启用与连续 50 次重启验证，并断言停止后 launchd 任务已卸载。TypeScript、Prettier、diff 空白检查及 npm 包内容检查通过。
 
 测试经真实 HTTP 和官方 SDK 客户端验证初始化、工具发现、调用、Origin、撤销、分块请求上限、错误响应、权限、并发版本、搜索完整性和日志脱敏；两个真实节点验证远端 Raw 在 Hub MCP 上只读、Leader 发布的 shared 正常分发。临时 macOS LaunchAgent 验证系统托管与重启；Skill 在隔离项目中实际安装。
 
-验证边界：没有部署用户的公开域名、证书或生产 Hub；没有运行 Codex/Claude Code 的实际模型会话，客户端示例依据官方配置文档，互操作验收使用官方 SDK。Linux systemd 本轮未做实机测试。原生服务在一次并行全量测试中出现 `launchctl bootstrap` 错误 5；随后完整 58 项与独立连续重启复测均通过，未能稳定复现，未修改既有 launchd 注册逻辑或声称根因已修复。保留连续重启测试以继续捕获该平台偶发情况。
+验证边界：没有部署用户的公开域名、证书或生产 Hub；没有运行 Codex/Claude Code 的实际模型会话，客户端示例依据官方配置文档，互操作验收使用官方 SDK。Linux systemd 本轮未做实机测试。发布前并行测试再次触发 `launchctl bootstrap` 错误 5。诊断捕获旧任务仍处于 `SIGTERMed`：停止逻辑先观察到 worker 状态消失，但 launchd 尚未完成卸载。现已在停止与重新注册前等待该任务从 launchd 消失，最多等待 10 秒，其他查询或卸载错误直接报告。修复后独立 50 次连续重启与原始并行全量 58 项测试均通过，临时诊断日志已移除。
 
 本功能随 v0.4.0 发布，验收未修改现有 KiokuNet 安装。`kioku-curate` 的现有本机工作区进度/锁流程没有自动迁移成 MCP 工作流；远程 Leader 使用 MCP 工具，并由运行器自行维护任务进度。
 

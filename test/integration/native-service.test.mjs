@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, basename } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createServer } from "node:net";
 const cli = resolve("dist/cli.js");
@@ -34,7 +34,7 @@ test(
   {
     skip:
       process.env.KIOKU_TEST_NATIVE !== "1" || process.platform !== "darwin",
-    timeout: 30000,
+    timeout: 120000,
   },
   async () => {
     const d = await mkdtemp(join(tmpdir(), "kioku-native-")),
@@ -70,11 +70,24 @@ test(
         String(await port()),
       ]);
       assert.equal(call(home, ["mcp", "status"]).running, true);
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 50; i++) {
         call(home, ["service", "restart"]);
         assert.equal(call(home, ["mcp", "status"]).running, true);
       }
       call(home, ["service", "stop", "--service", "manual"]);
+      for (const f of files)
+        assert.throws(
+          () =>
+            execFileSync(
+              "launchctl",
+              [
+                "print",
+                `gui/${process.getuid()}/${basename(f.path, ".plist")}`,
+              ],
+              { stdio: "pipe" },
+            ),
+          { status: 113 },
+        );
       assert.equal(call(home, ["status"]).sync.running, false);
       assert.equal(call(home, ["mcp", "status"]).running, false);
       assert.equal(call(home, ["status"]).serviceMode, "manual");
