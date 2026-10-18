@@ -151,11 +151,13 @@ Leader 整理任务提供工作区 Raw/shared/allRaw 路径，由原有运行器
 
 Raw 继续使用任意已有目录和文件，可编辑、移动和删除，不要求 `AGENTS.md`、`MEMORY.md`、记录 ID 或 YAML 元数据头。普通 Agent 将可复用知识和纠错写入自己的 Raw，Leader 负责提炼 Shared。
 
-Shared 沿用 `INDEX.md` 和 `profile/`、`projects/`、`topics/`：先通过短索引找到相关主题，再按需读取正文和证据。主题按使用场景组织，同一结论保留一个主要位置，其余地方链接引用。
+Shared 默认提供 `profiles/`（个人档案）、`projects/`（项目）和 `prefers/`（偏好与习惯），有明确需要时可扩展类别。每个知识目录使用 `Index.md`，提供本层概要和详情链接；项目从一开始就放在独立子目录中。按根概览、目录概览、具体知识、必要证据逐层阅读，同一结论保留一个主要位置。
 
-`kioku-curate` 默认按 [Shared 输出约定与模板](../skills/kioku-curate/references/shared-format.md) 生成公共主题文档：使用 `schema / title / updated / status` 元数据头，逐条区分用户确认、来源陈述、Agent 推断和待核实内容，并在正文保留来源路径、提炼时哈希及读取时间。字段定义、状态语义、索引和主题模板以该参考文件为准。
+`kioku-curate` 按 [Shared 输出约定与模板](../skills/kioku-curate/references/shared-format.md) 维护当前概要、有价值的日期记录及来源表。正文直接表达事实和规则，有推断或冲突时自然说明；偏好提炼、内容筛选、元数据与来源字段的具体规则以该参考文件为准。
 
-已有无头部 Shared 文档仍可阅读，在下一次实质更新时逐步补齐。无需批量迁移 Raw 或重写全部 Shared。这是 Leader 的默认输出实践；CLI 不会据此拒收自由格式文件，也没有新增 schema 解析或校验命令。已安装的 Leader Skill 需从包含本次更新的包或源码重新安装，才能使用新模板；更新源码不会自动替换其他机器已安装的 Skill。
+`init` 在空 Shared 中创建三个基础目录和四个索引；已有知识目录（包括旧的 `INDEX.md`、`profile/`、`topics/`）保持原样，重复初始化不迁移或覆盖已有知识。旧文档仍可阅读，在实质更新时逐步适配；全库重组由用户另行指定，Leader 不受增量 Raw 哈希筛选限制地处理该范围。Raw 无需迁移。
+
+这是 Leader 的默认输出实践；CLI 不会据此拒收自由格式文件，也没有新增 schema 解析或校验命令。已安装的 Leader Skill 需从包含本次更新的包或源码重新安装，才能使用新模板；更新源码不会自动替换其他机器已安装的 Skill。
 
 ### 可选的工作区阅读指引
 
@@ -164,8 +166,9 @@ Shared 沿用 `INDEX.md` 和 `profile/`、`projects/`、`topics/`：先通过短
 ```markdown
 ## KiokuNet 知识
 
-需要已有偏好、项目背景或跨会话知识时，先读 <shared入口>/INDEX.md，
-再按链接读取相关主题；核验结论时检查来源与适用范围。
+需要已有偏好、项目背景或跨会话知识时，先读 <shared入口>/Index.md
+（旧库使用实际存在的 INDEX.md），再逐级读取相关概要和主题；
+核验结论时检查来源与适用范围。
 
 新的可复用知识和对公共知识的纠错写入 <自己的raw入口>。
 公共知识由 Leader 整理，普通 Agent 只读 Shared。
@@ -173,7 +176,7 @@ Shared 沿用 `INDEX.md` 和 `profile/`、`projects/`、`topics/`：先通过短
 未确认建议保持为建议；无法消解的分歧应明确说明。
 ```
 
-由工作区维护者选择和合并指引；KiokuNet 不自动创建或覆盖指令文件。Shared 默认使用 `INDEX.md`，不要求再维护一份 `MEMORY.md`。运行器需要本地记忆入口时，可在其本地文件中保存导读或路径；保持其自动记忆写入与 Leader 的 Shared 发布分离。
+由工作区维护者选择和合并指引；KiokuNet 不自动创建或覆盖指令文件。Shared 默认使用 `Index.md`，不要求再维护一份 `MEMORY.md`。运行器需要本地记忆入口时，可在其本地文件中保存导读或路径；保持其自动记忆写入与 Leader 的 Shared 发布分离。
 
 ## 开发验证
 

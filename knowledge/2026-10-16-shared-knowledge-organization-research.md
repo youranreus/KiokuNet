@@ -9,6 +9,8 @@ status: research-proposal
 
 > 采纳记录（2026-10-16）：用户确认后，文档与输出模板已纳入 [kioku-curate 默认约定](../skills/kioku-curate/references/shared-format.md) 和 [使用指南](usage.md#知识组织的默认实践)。下文保留调研时的建议与阶段计划；CLI 自动校验、检索评测等后续能力尚未实现。
 
+> 后续调整（2026-10-18）：用户确认将基础目录改为 `profiles/projects/prefers`，每个知识目录维护含概要的 `Index.md`，项目独立成目录，当前结论持续修订、过程按日期记录，偏好需明确要求或独立重复证据，并移除机械确认标签。当前规则以 [Shared 输出约定](../skills/kioku-curate/references/shared-format.md) 为准；下文旧布局和逐条标签建议保留为调研历史。现有 Shared 的重组另行安排。
+
 ## 结论
 
 建议采用 **自由格式 Raw、按主题维护 Shared、短索引按需读取、来源随结论保留** 的方式。共享知识使用普通 Markdown；Shared 新文档默认使用少量 YAML 元数据，Raw 不强制模板。`AGENTS.md` 用于指导 Agent 如何使用知识，`INDEX.md` 用于发现知识，主题文档保存知识本身。`MEMORY.md` 保留为特定运行器的接入选择，不作为 KiokuNet 的通用数据协议。

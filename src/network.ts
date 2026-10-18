@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
@@ -37,18 +37,47 @@ export interface InitOptions {
 async function layout(c: Config, home: string) {
   await mkdir(join(c.root, "shared"), { recursive: true });
   if (c.mode === "hub") {
+    const shared = join(c.root, "shared");
+    const hasKnowledge = (await readdir(shared)).some(
+      (name) =>
+        ![
+          ".kioku-shared.json",
+          ".stfolder",
+          ".stignore",
+          ".stversions",
+        ].includes(name) && !name.startsWith(".syncthing."),
+    );
     await atomicJson(join(c.root, "shared", ".kioku-shared.json"), {
       networkId: c.networkId,
     });
-    for (const name of ["profile", "projects", "topics"])
-      await mkdir(join(c.root, "shared", name), { recursive: true });
-    const index = join(c.root, "shared", "INDEX.md");
-    if (!(await exists(index)))
+    // Seed empty libraries only; existing layouts and indexes belong to the Leader.
+    if (!hasKnowledge) {
+      for (const [name, title, description] of [
+        [
+          "profiles",
+          "个人档案",
+          "用户基础信息，以及健康、爱好等长期跟踪内容。",
+        ],
+        [
+          "projects",
+          "项目",
+          "按项目建立子目录，汇总项目背景、当前状态与相关记录。",
+        ],
+        ["prefers", "偏好与习惯", "用户的长期规则、稳定习惯及其适用场景。"],
+      ] as const) {
+        await mkdir(join(shared, name), { recursive: true });
+        await writeFile(
+          join(shared, name, "Index.md"),
+          `# ${title}\n\n${description}\n`,
+          { flag: "wx" },
+        );
+      }
       await writeFile(
-        index,
-        "# Shared knowledge\n\n- profile/ — personal information and preferences\n- projects/ — project context and decisions\n- topics/ — reusable knowledge\n",
+        join(shared, "Index.md"),
+        "# 公共知识\n\n- [个人档案](profiles/Index.md)：用户基础信息、健康与爱好。\n- [项目](projects/Index.md)：项目背景、当前状态与相关记录。\n- [偏好与习惯](prefers/Index.md)：长期规则、稳定习惯及其适用场景。\n",
         { flag: "wx" },
       );
+    }
   }
   await reconcile(c);
 }

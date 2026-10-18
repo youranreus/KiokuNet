@@ -179,9 +179,9 @@ test("same-account workspaces read a readonly copy while the Leader can edit sha
     );
     if (process.getuid?.() !== 0) {
       for (const write of [
-        () => writeFile(join(workspace, "writer-shared/INDEX.md"), "oops"),
+        () => writeFile(join(workspace, "writer-shared/Index.md"), "oops"),
         () => writeFile(join(workspace, "writer-shared/new.md"), "oops"),
-        () => unlink(join(workspace, "writer-shared/INDEX.md")),
+        () => unlink(join(workspace, "writer-shared/Index.md")),
       ])
         await assert.rejects(write, (e) =>
           ["EACCES", "EPERM", "EROFS"].includes(e.code),

@@ -205,7 +205,7 @@ test("writable Raw cannot redirect infrastructure control-file writes into share
   ];
   try {
     assert.equal(call(home, init).ok, true);
-    const target = join(root, "shared/INDEX.md"),
+    const target = join(root, "shared/Index.md"),
       ignore = join(root, "agents/leader/raw/.stignore");
     const original = await readFile(target, "utf8");
     for (const redirect of [symlink, link]) {
