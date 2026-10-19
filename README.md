@@ -26,7 +26,7 @@ flowchart LR
 
 ## 安装
 
-要求 Node.js ≥22.20，支持 macOS / Linux。仓库当前改造包含破坏性接口更新，已发布包是否包含这些接口以安装版本的 `kioku --help` 为准。
+要求 Node.js ≥22.20，支持 macOS / Linux。1.0.0 采用 Node / Knowledge Space 模型，包含破坏性接口及配置更新；从 0.x 升级前请阅读[升级指南](knowledge/upgrading.md)。
 
 ```sh
 npm install -g @reus-able/kioku-net
