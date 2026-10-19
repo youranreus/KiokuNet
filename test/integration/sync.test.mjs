@@ -12,7 +12,7 @@ function call(home, args) {
     ...process.env,
     KIOKU_SYNCTHING: process.env.KIOKU_SYNCTHING || resolve(".tools/syncthing"),
   };
-  delete env.KIOKU_AGENT_ID;
+  delete env.KIOKU_SPACE_ID;
   return JSON.parse(
     execFileSync(process.execPath, [cli, ...args, "--home", home, "--json"], {
       env,
@@ -53,8 +53,6 @@ test(
     try {
       call(hub, [
         "init",
-        "--agent",
-        "leader",
         "--root",
         hd,
         "--address",
@@ -62,7 +60,7 @@ test(
         "--service",
         "manual",
       ]);
-      call(hub, ["invite", "--agent", "dev", "--out", join(d, "invite.json")]);
+      call(hub, ["invite", "--out", join(d, "invite.json")]);
       call(node, [
         "join",
         "--invite",
@@ -77,18 +75,17 @@ test(
         String(await port()),
       ]);
       call(hub, ["enroll", "--receipt", join(d, "receipt.json")]);
+      call(node, ["space", "add", "--space", "dev"]);
       call(hub, ["service", "start"]);
       call(node, ["service", "start"]);
-      await writeFile(
-        join(nd, "agents/dev/raw/note.md"),
-        "# confirmed source\n",
-      );
+      await writeFile(join(nd, "spaces/dev/note.md"), "# confirmed source\n");
       await waitFor(async () =>
         assert.equal(
-          await readFile(join(hd, "agents/dev/raw/note.md"), "utf8"),
+          await readFile(join(hd, "spaces/dev/note.md"), "utf8"),
           "# confirmed source\n",
         ),
       );
+      await mkdir(join(hd, "shared/projects"), { recursive: true });
       await writeFile(
         join(hd, "shared/projects/decision.md"),
         "# shared conclusion\n",
@@ -100,7 +97,7 @@ test(
         ),
       );
       assert.equal(
-        await readFile(join(nd, "agents/dev/raw/note.md"), "utf8"),
+        await readFile(join(nd, "spaces/dev/note.md"), "utf8"),
         "# confirmed source\n",
       );
       assert.equal(call(node, ["status"]).sync.enrollment, "connected");

@@ -16,7 +16,7 @@ import {
   Failure,
   exists,
   requireThat,
-  rawPath,
+  spacePath,
   sha,
   registrationPath,
 } from "./core.js";
@@ -82,8 +82,9 @@ export async function setupSync(
     },
   };
 }
-export const folderId = (c: Config, agent?: string) =>
-  `kioku-${c.networkId}-${agent ? `raw-${agent}` : "shared"}`;
+export const folderId = (c: Config, space?: string) =>
+  (space && c.spaces.find((s) => s.id === space)?.syncFolderId) ||
+  `kioku-${c.networkId}-${space ? `space-${space}` : "shared"}`;
 interface Folder {
   id: string;
   label: string;
@@ -122,7 +123,7 @@ export function folders(c: Config): Folder[] {
         devices: [node, c.hubDeviceId].map((deviceID) => ({ deviceID })),
       });
     }
-  for (const a of c.agents.filter(
+  for (const a of c.spaces.filter(
     (a) =>
       a.active &&
       (a.local || c.mode === "hub") &&
@@ -131,8 +132,8 @@ export function folders(c: Config): Folder[] {
     const peer = a.local ? c.hubDeviceId : a.deviceId;
     result.push({
       id: folderId(c, a.id),
-      label: `KiokuNet Raw ${a.id}`,
-      path: rawPath(c, a.id),
+      label: `KiokuNet space ${a.id}`,
+      path: spacePath(c, a.id),
       type: a.local ? "sendonly" : "receiveonly",
       devices: [...new Set([c.deviceId, peer])].map((deviceID) => ({
         deviceID,
@@ -207,7 +208,7 @@ export async function reconcile(c: Config): Promise<void> {
     const ignorePath = join(f.path, ".stignore");
     const ignore = await readIgnore(ignorePath);
     // Must precede any existing allow-pattern; incomplete records are never announced.
-    const managed = "*.kioku-tmp\n.kioku-curation\n";
+    const managed = "*.kioku-tmp\n";
     if (!ignore.startsWith(managed)) {
       // Stage outside the writable Raw. Atomic replacement never follows a
       // symlink or writes a hard-linked inode swapped into .stignore meanwhile.

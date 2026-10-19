@@ -59,40 +59,12 @@ async function knowledgeSnapshot(shared) {
   return { entries: entries.sort(), files };
 }
 
-test("an empty Shared starts with three linked directories and exact Index.md casing", async (t) => {
+test("Shared starts without imposing a knowledge taxonomy and preserves user organization", async (t) => {
   const f = await fixture(t);
   f.init();
-  const snapshot = await knowledgeSnapshot(f.shared);
-  assert.deepEqual(snapshot.entries, [
-    "Index.md",
-    "prefers",
-    "prefers/Index.md",
-    "profiles",
-    "profiles/Index.md",
-    "projects",
-    "projects/Index.md",
-  ]);
-  const links = [...snapshot.files["Index.md"].matchAll(/\]\(([^)]+)\)/g)].map(
-    (match) => match[1],
-  );
-  assert.deepEqual(links.sort(), [
-    "prefers/Index.md",
-    "profiles/Index.md",
-    "projects/Index.md",
-  ]);
-  for (const link of links) assert.ok(snapshot.files[link]?.trim());
-
-  f.init();
-  assert.deepEqual(await knowledgeSnapshot(f.shared), snapshot);
-});
-
-test("reinitialization preserves edited indexes and does not recreate renamed categories", async (t) => {
-  const f = await fixture(t);
-  f.init();
-  await rename(join(f.shared, "prefers"), join(f.shared, "habits"));
-  await writeFile(join(f.shared, "Index.md"), "# My library\n\nCustom entry\n");
-  await writeFile(join(f.shared, "profiles/Index.md"), "# Personal overview\n");
-  await writeFile(join(f.shared, "projects/custom.md"), "Existing project\n");
+  assert.deepEqual((await knowledgeSnapshot(f.shared)).entries, []);
+  await mkdir(join(f.shared, "my-category"));
+  await writeFile(join(f.shared, "my-category", "notes.md"), "user content");
   const before = await knowledgeSnapshot(f.shared);
   f.init();
   assert.deepEqual(await knowledgeSnapshot(f.shared), before);

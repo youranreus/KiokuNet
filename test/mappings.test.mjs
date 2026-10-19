@@ -7,21 +7,19 @@ import { spawnSync } from "node:child_process";
 
 const cli = resolve("dist/cli.js");
 
-test("workspace attachment requires an initialized node before exposing directories", async () => {
+test("space mapping requires an initialized node before exposing directories", async () => {
   const dir = await mkdtemp(join(tmpdir(), "kioku-workspace-"));
   try {
     const result = spawnSync(
       process.execPath,
       [
         cli,
-        "workspace",
-        "attach",
-        "--source",
-        join(dir, "source"),
-        "--raw-path",
+        "space",
+        "map",
+        "--space",
+        "notes",
+        "--path",
         join(dir, "memory"),
-        "--shared-path",
-        join(dir, "shared"),
         "--home",
         join(dir, "config"),
         "--json",

@@ -45,7 +45,7 @@ const contentPolicy = (redirectUri?: string) =>
   `default-src 'none'; form-action 'self'${redirectUri ? ` ${new URL(redirectUri).origin}` : ""}; frame-ancestors 'none'; base-uri 'none'`;
 function page(res: Response, content: string, redirectUri?: string) {
   // Browsers also check the destination of a form's OAuth redirect. Permit
-  // only the registered callback origin, while keeping all other resources off.
+  // only the registered callback origin, while keeping all other respaces off.
   res.set("Content-Security-Policy", contentPolicy(redirectUri));
   // no-referrer makes browsers send Origin: null on HTML form POSTs, which
   // breaks the exact-origin consent check. Keep referrers within this Hub.
@@ -379,7 +379,12 @@ export function createOAuthApp(home: string, resource: string) {
           const { hash: _hash, expiresAt, ...identity } = approval;
           request.approval = identity;
           request.expiresAt = Math.min(request.expiresAt, expiresAt);
-          return { request };
+          return {
+            request,
+            clientName:
+              s.clients.find((client) => client.client_id === request.clientId)
+                ?.client_name || request.clientId,
+          };
         }
         if (
           req.body.action !== "approve" ||
@@ -387,7 +392,7 @@ export function createOAuthApp(home: string, resource: string) {
           !validBinding(c, request.approval)
         )
           throw new InvalidRequestError(
-            "Review a valid Agent binding before approving.",
+            "Review valid access scopes before approving.",
           );
         const name = String(req.body.name || "").trim();
         if (!name || name.length > 80 || /[\x00-\x1f\x7f]/.test(name))
@@ -433,13 +438,11 @@ export function createOAuthApp(home: string, resource: string) {
       } else {
         const request = result.request!,
           identity = request.approval!;
-        const permissions =
-          identity.role === "leader"
-            ? "读取全部活跃来源的 Raw；读写 shared。不能修改 Raw。"
-            : `读写自己的 Raw（${identity.sourceId}）；只读 shared。`;
+        const p = identity.permissions;
+        const permissions = `空间读取：${p.readSpaces === "*" ? "所有当前及未来新增空间" : p.readSpaces.join("、") || "无"}；空间读写：${p.writeSpaces.join("、") || "无"}；Shared：${{ none: "无权限", read: "只读", "read-write": "读写" }[p.shared]}。`;
         page(
           res,
-          `<h2>确认授权范围</h2><p>Agent：${escape(identity.agentId)}</p><p>角色：${escape(identity.role)}</p><p>${escape(permissions)}</p><p>回调地址：${escape(request.redirectUri)}</p><p>此身份将在不同聊天之间沿用。连续 90 天未成功调用知识工具后需要重新授权；你可以随时在 Hub 撤销连接。</p><form method="post" action="/oauth/consent"><input type="hidden" name="request" value="${request.id}"><label>连接名称 <input name="name" maxlength="80" required value="ChatGPT · ${escape(identity.agentId)}"></label><button name="action" value="approve">批准连接</button><button name="action" value="deny" formnovalidate>取消</button></form>`,
+          `<h2>确认授权范围</h2><p>客户端：${escape(result.clientName || "MCP client")}</p><p>${escape(permissions)}</p><p>回调地址：${escape(request.redirectUri)}</p><p>此连接仅具有上面列明的权限。连续 90 天未成功调用知识工具后需要重新授权；你可以随时在 Hub 撤销连接。</p><form method="post" action="/oauth/consent"><input type="hidden" name="request" value="${request.id}"><label>连接名称 <input name="name" maxlength="80" required value="MCP connection"></label><button name="action" value="approve">批准连接</button><button name="action" value="deny" formnovalidate>取消</button></form>`,
           request.redirectUri,
         );
       }

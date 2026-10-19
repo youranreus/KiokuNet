@@ -13,53 +13,47 @@ import {
   canonical,
   inside,
   sha,
-  rawPath,
+  spacePath,
 } from "./core.js";
-import { detachWorkspace } from "./workspace.js";
+import { unmapDirectory } from "./mappings.js";
 import { reconcile } from "./sync.js";
 import { copyVerified, FileEntry } from "./files.js";
 import { hubOnly, invite } from "./network.js";
 
-export async function retire(home: string, c: Config, agentId: string) {
-  const a = c.agents.find((a) => a.id === agentId);
-  requireThat(
-    a && a.role !== "leader",
-    "INVALID_AGENT",
-    "Only a registered non-Leader Agent can be retired.",
-  );
-  for (const w of [...(c.workspaces || [])].filter(
-    (w) => w.sourceId === agentId,
-  ))
-    await detachWorkspace(home, c, w.raw);
+export async function retire(home: string, c: Config, spaceId: string) {
+  const a = c.spaces.find((a) => a.id === spaceId);
+  requireThat(a, "INVALID_SPACE", "Only a registered space can be retired.");
+  for (const w of [...(c.mappings || [])].filter((w) => w.spaceId === spaceId))
+    await unmapDirectory(home, c, w.path);
   a.active = false;
   for (const invitation of Object.values(c.invitations))
-    if (invitation.envelope.payload.agentId === agentId)
+    if (invitation.envelope.payload.spaceId === spaceId)
       invitation.revoked = true;
   await save(home, c);
   await reconcile(c);
   return {
-    agentId,
+    spaceId,
     active: false,
     knowledgePreserved: true,
     next:
       c.mode === "node"
-        ? "Also retire this Agent on the Hub to remove its sharing relationship."
-        : "Stop use of this identity on its original node.",
+        ? "Also retire this Space on the Hub to remove its sharing relationship."
+        : "Stop use of this space on its original node.",
   };
 }
 export async function revoke(home: string, c: Config, deviceId: string) {
   hubOnly(c);
   const peer = c.peers.find((p) => p.deviceId === deviceId);
   requireThat(peer, "UNKNOWN_DEVICE", "Device is not registered.");
-  for (const w of [...(c.workspaces || [])].filter((w) =>
-    c.agents.some((a) => a.id === w.sourceId && a.deviceId === deviceId),
+  for (const w of [...(c.mappings || [])].filter((w) =>
+    c.spaces.some((a) => a.id === w.spaceId && a.deviceId === deviceId),
   ))
-    await detachWorkspace(home, c, w.raw);
+    await unmapDirectory(home, c, w.path);
   peer.revoked = true;
-  for (const a of c.agents.filter((a) => a.deviceId === deviceId)) {
+  for (const a of c.spaces.filter((a) => a.deviceId === deviceId)) {
     a.active = false;
     for (const i of Object.values(c.invitations))
-      if (i.envelope.payload.agentId === a.id) i.revoked = true;
+      if (i.envelope.payload.spaceId === a.id) i.revoked = true;
   }
   await save(home, c);
   await reconcile(c);
@@ -71,9 +65,9 @@ export async function revoke(home: string, c: Config, deviceId: string) {
   };
 }
 interface Migration {
-  version: 1;
+  version: 2;
   kind: "migration";
-  agentId: string;
+  spaceId: string;
   networkId: string;
   deviceId: string;
   publicKey: string;
@@ -82,15 +76,11 @@ interface Migration {
 export async function exportMigration(
   home: string,
   c: Config,
-  agentId: string,
+  spaceId: string,
   target: string,
 ) {
-  const a = c.agents.find((a) => a.id === agentId && a.local);
-  requireThat(
-    a && a.role === "member",
-    "INVALID_AGENT",
-    "Migration export requires a local non-Leader Agent.",
-  );
+  const a = c.spaces.find((a) => a.id === spaceId && a.local);
+  requireThat(a, "INVALID_SPACE", "Migration export requires a local space.");
   target = await canonical(target);
   requireThat(
     !(await exists(target)),
@@ -103,14 +93,14 @@ export async function exportMigration(
       "OVERLAPPING_PATHS",
       "Migration bundle must be outside knowledge and private configuration.",
     );
-  await retire(home, c, agentId);
+  await retire(home, c, spaceId);
   await mkdir(target, { recursive: true, mode: 0o700 });
-  const files = await copyVerified(rawPath(c, agentId), join(target, "data"));
+  const files = await copyVerified(spacePath(c, spaceId), join(target, "data"));
   await atomicJson(join(target, "manifest.json"), { files });
   const receipt = await signed<Migration>(home, {
-    version: 1,
+    version: 2,
     kind: "migration",
-    agentId,
+    spaceId,
     networkId: c.networkId,
     deviceId: c.deviceId,
     publicKey: c.publicKey,
@@ -120,7 +110,7 @@ export async function exportMigration(
   return {
     target,
     retired: true,
-    next: "Transfer migration.json to Hub; run agent migrate --receipt FILE --out INVITE. Transfer the full bundle to the new node and join with --seed DIR.",
+    next: "Transfer migration.json to Hub; run space migrate --receipt FILE --out INVITE. Transfer the full bundle to the new node and join with --seed DIR.",
   };
 }
 export async function acceptMigration(
@@ -133,14 +123,14 @@ export async function acceptMigration(
   hubOnly(c);
   const envelope = await readJson<Envelope<Migration>>(receipt);
   const m = verified(envelope, envelope?.payload?.publicKey);
-  const agent = c.agents.find((a) => a.id === m.agentId),
+  const space = c.spaces.find((a) => a.id === m.spaceId),
     peer = c.peers.find((p) => p.deviceId === m.deviceId);
   requireThat(
     m.kind === "migration" &&
-      m.version === 1 &&
+      m.version === 2 &&
       m.networkId === c.networkId &&
-      agent?.role === "member" &&
-      agent.deviceId === m.deviceId &&
+      space &&
+      space.deviceId === m.deviceId &&
       (m.deviceId === c.deviceId
         ? c.publicKey === m.publicKey
         : peer?.publicKey === m.publicKey && !peer.revoked),
@@ -148,14 +138,14 @@ export async function acceptMigration(
     "Migration does not match the registered writer.",
   );
   requireThat(
-    confirmedId === m.agentId,
+    confirmedId === m.spaceId,
     "CONFIRMATION_REQUIRED",
-    "Confirmation must match the migrating Agent.",
+    "Confirmation must match the migrating Space.",
   );
-  if (!agent.active && agent.seedHash === sha(JSON.stringify(m.files)))
-    return invite(home, c, agent.id, out);
-  await retire(home, c, agent.id);
-  agent.seedHash = sha(JSON.stringify(m.files));
+  if (!space.active && space.seedHash === sha(JSON.stringify(m.files)))
+    return invite(home, c, space.id, out);
+  await retire(home, c, space.id);
+  space.seedHash = sha(JSON.stringify(m.files));
   await save(home, c);
-  return invite(home, c, agent.id, out);
+  return invite(home, c, space.id, out);
 }

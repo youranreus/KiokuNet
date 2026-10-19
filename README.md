@@ -1,152 +1,97 @@
-<p align="center">
-  <img src="assets/brand/kiokunet-rounded.png" width="160" height="160" alt="KiokuNet：思考气泡">
-</p>
+<p align="center"><img src="assets/brand/kiokunet-rounded.png" width="160" height="160" alt="KiokuNet"></p>
 
-<h1 align="center">KiokuNet</h1>
+# KiokuNet
 
-<p align="center">
-  <strong>让每个 Agent 的思考，成为共同的记忆。</strong><br>
-  A local-first memory network for your agents.
-</p>
+本地优先的知识空间，让你的多台机器共享知识。
 
-<p align="center">
-  <a href="https://github.com/youranreus/KiokuNet/releases/latest"><img src="https://img.shields.io/github/v/release/youranreus/KiokuNet?style=flat-square&amp;label=release&amp;color=7562D9" alt="GitHub 最新发布版本"></a>
-  <a href="#项目状态"><img src="https://img.shields.io/badge/status-early%20preview-E9A23B?style=flat-square" alt="项目状态：早期预览"></a>
-  <a href="#安装"><img src="https://img.shields.io/badge/Node.js-%3E%3D22.20-5FA574?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white" alt="Node.js 版本要求：22.20 或更新"></a>
-  <a href="#项目状态"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-64748B?style=flat-square" alt="目标平台：macOS 与 Linux"></a>
-</p>
+KiokuNet 管理机器、知识目录、同步和访问。知识由什么程序使用、如何采集或整理，由你决定。
 
-<p align="center">
-  <a href="#快速接入">快速接入</a> ·
-  <a href="knowledge/usage.md">使用指南</a> ·
-  <a href="https://www.npmjs.com/package/@reus-able/kioku-net">npm 包</a> ·
-  <a href="https://github.com/youranreus/KiokuNet/releases">下载</a> ·
-  <a href="knowledge/releasing.md">发布指南</a> ·
-  <a href="https://github.com/youranreus/KiokuNet/issues">反馈问题</a>
-</p>
+## 产品概念
 
----
-
-你在不同机器、不同 Agent 里积累的背景、偏好和项目决策，值得被下一次工作继续使用。
-
-**KiokuNet 把知识保存在本地普通文件中，并把目录接到 Agent 工作区。** 自己的 Raw 可以自由编辑、重命名和删除；公共知识由 Leader 提炼后分发，普通 Agent 只读。文件位置由参数指定，普通读写不需要 Skill 或运行时身份绑定。
-
-## 如何工作
+- **Node**：接入 Syncthing 网络的机器，例如 VPS、Mac 或 Linux 电脑。一台机器可以拥有多个空间。
+- **Knowledge Space**：网络内标识唯一的知识目录，同一时刻只有一个写入节点。一个空间可以映射到多个本地路径。
+- **Hub**：中心节点，汇集全部空间的副本。普通节点只保存自己的空间与 Shared。
+- **Shared**：暂时独立的网络公共知识区，由 Hub 写入并分发。普通目录入口使用只读副本，Hub 可显式创建可写入口。
 
 ```mermaid
 flowchart LR
-  A[Agent 工作区] -->|可读写入口| R[自己的 Raw]
-  R -->|Syncthing| H[Hub 汇集来源]
-  H -->|读取| L[Leader 提炼]
-  L -->|写入| S[公共知识 shared]
-  S -->|同步| C[本机 shared]
-  C -->|自动生成只读副本| V[工作区 shared 入口]
-  V -->|读取| A
+  A[Node A 的空间] -->|同步| H[Hub 汇集空间]
+  B[Node B 的空间] -->|同步| H
+  H -->|显式授权读取| C[MCP 客户端]
+  C -->|授权写入 Hub 空间或 Shared| H
+  S[Hub Shared] -->|同步与只读副本刷新| N[各节点目录入口]
 ```
 
-每个来源目录只有一个写入节点，支持离线访问和最终一致同步。多个工作区可以链接同一来源目录。系统只维护当前文件，不提供历史保存、快照或恢复；来源删除不自动撤回已经提炼的公共知识。
-
-Hub 还可显式启用 [MCP 服务](knowledge/mcp.md)，让 Codex、Claude Code 等远程客户端通过 Bearer 密钥列目录、读写文本和批量关键词搜索；[OAuth 接入](knowledge/oauth.md)支持 ChatGPT 网页版通过本机批准的连接使用同一套权限。普通 Agent 只写自己的 Hub Raw，Leader 可远程维护 shared，远端节点的 Raw 保持只读。公网 HTTPS 由反向代理提供。
+产品不管理 Agent 身份、角色、会话或执行调度。默认 `kioku` skill 是操作指南；可选 `kioku-curate` 提供一种整理实践，也可以使用自己的流程。
 
 ## 安装
 
-包名为 [`@reus-able/kioku-net`](https://www.npmjs.com/package/@reus-able/kioku-net)，安装后的命令为 `kioku`。版本与变更说明见 [GitHub Releases](https://github.com/youranreus/KiokuNet/releases)。
+要求 Node.js ≥22.20，支持 macOS / Linux。仓库当前改造包含破坏性接口更新，已发布包是否包含这些接口以安装版本的 `kioku --help` 为准。
 
-需要 Node.js ≥ 22.20、npm，macOS 或 Linux（arm64 / amd64）。从 npm 安装：
-
-```bash
+```sh
 npm install -g @reus-able/kioku-net
-kioku --help
-```
-
-也可下载 [GitHub Release](https://github.com/youranreus/KiokuNet/releases) 的 `.tgz` 与 `SHA256SUMS`，校验后执行 `npm install -g ./reus-able-kioku-net-<version>.tgz`。校验方法见 [发布指南](knowledge/releasing.md)。有预发布版本并设置 `next` 标签时，可用 `npm install -g @reus-able/kioku-net@next` 安装。
-
-开发时，在克隆的仓库根目录安装当前源码：
-
-```bash
-npm ci
-npm run build
-npm install -g .
-kioku --help
-```
-
-v0.2.0 起支持机器接入与工作区目录接入；v0.1.0 使用原有 Skill 接入方式。CLI 自动寻找或下载并校验 Syncthing。
-
-### 给 Agent 安装使用指南
-
-v0.3.0 起随包提供两个独立 Skill：`kioku` 介绍产品和 CLI 使用，`kioku-curate` 供 Leader 整理公共知识。安装对应版本的 CLI 后，可以在初始化网络前安装通用指南：
-
-```bash
 kioku skill install --runtime codex
-# 也支持 hermes-agent、pi、universal；--scope project 安装到当前项目
 ```
 
-默认安装 `kioku`，普通节点和 Hub 均可使用。它按需指导安装、入网、来源与工作区接入、诊断和迁移，不处理知识内容，也不成为文件访问的前置条件。已有 Hub 若需要整理能力，显式执行 `kioku skill install --runtime hermes-agent --skill kioku-curate`；任务仍由原有运行器调度。
+从本仓库运行：
 
-## 快速接入
-
-安装根默认是 `~/.kiokunet`，可用 `--home /opt/kiokunet` 整体指定。知识位于 `data/`，配置位于 `config/`，状态、日志与只读副本也集中在安装根内。
-
-```bash
-# Hub：先建立网络，不必创建 Agent
-kioku init --address <Hub地址>:22000
-kioku invite --out ~/.kiokunet/config/mac.invite.json
-
-# Mac：接收邀请，完成机器配对
-kioku join --invite /path/to/mac.invite.json --out ~/.kiokunet/config/mac.receipt.json
-# 将回执传回 Hub 执行：kioku enroll --receipt /path/to/mac.receipt.json
-
-# Mac：以后创建来源，无需再次配对
-kioku source add --agent writer
-kioku workspace attach \
-  --source ~/.kiokunet/data/agents/writer/raw \
-  --raw-path /work/project/memory \
-  --shared-path /work/project/knowledge
-```
-
-工作区父目录需已存在。普通 Agent 的 shared 入口指向自动更新的只读副本，首次没有可用副本时接入报错。同一来源可接入多个工作区；已有不同内容时拒绝覆盖。`workspace detach --raw-path PATH` 仅移除登记链接，保留知识。
-
-Hub 上通过 `source add --agent leader --role leader` 创建 Leader。Leader 的 shared 入口直接链接可写本体，可额外指定 `--all-raw-path`。运行和提炼任务仍由现有运行器管理。
-
-**只读副本用于防误写。** 不要求独立系统账号，也不阻止同账号进程主动改权限或访问本体。CLI 不修改提示词、不启动 Agent。完整部署、状态诊断和失败恢复见 [使用指南](knowledge/usage.md)。
-
-## 项目状态
-
-机器入网、来源登记与工作区接入已分离；后台负责来源自动登记、同步和 shared 副本刷新。离线创建来源后可先写 Raw，恢复连接后自动登记；同名来源不能接管其他机器的归属。副本刷新失败保留最后成功内容，并在状态中展示错误和更新时间。
-
-当前实现针对新安装，不提供旧版本目录布局迁移。机器与 Agent 的设计边界见 [设计记录](knowledge/2026-10-16-machine-and-agent-access-design.md)；测试结果和平台限制见 [实现记录](knowledge/implementation.md)。
-
-## 文档导航
-
-| 内容 | 文档 |
-| --- | --- |
-| 机器入网与 Agent 接入方案 | [2026-10-16 设计记录](knowledge/2026-10-16-machine-and-agent-access-design.md) |
-| 架构决策及替代关系 | [ADR 索引](knowledge/adr/README.md) |
-| 安装、配对、接入与运行状态 | [使用与运维指南](knowledge/usage.md) |
-| Hub MCP、密钥、客户端和公网部署 | [MCP 使用指南](knowledge/mcp.md) |
-| ChatGPT OAuth、连接授权与撤销恢复 | [OAuth 使用指南](knowledge/oauth.md) |
-| 目录接入历史决策，账号权限部分已被新方案替代 | [ADR 0004](knowledge/adr/0004-workspace-directories-and-current-state.md) |
-| Agent 了解 KiokuNet 和使用 CLI | [kioku](skills/kioku/SKILL.md) |
-| Leader 如何提炼当前文件 | [kioku-curate](skills/kioku-curate/SKILL.md) |
-| 知识组织默认实践与公共文档模板 | [使用指南](knowledge/usage.md#知识组织的默认实践) · [Shared 输出约定](skills/kioku-curate/references/shared-format.md) |
-| 领域术语 | [术语表](knowledge/GLOSSARY.md) |
-| 构建与发布 | [发布指南](knowledge/releasing.md) |
-
-## 参与开发
-
-```bash
+```sh
 npm ci
-npm run test:prepare
 npm run build
-node --test test/*.test.mjs test/integration/*.test.mjs
+node dist/cli.js --help
+```
+
+## 快速开始
+
+在 Hub 上：
+
+```sh
+kioku init --address hub.example:22000
+kioku invite --out /absolute/path/invite.json
+```
+
+将邀请交给另一台机器，在该机器上：
+
+```sh
+kioku join --invite /absolute/path/invite.json --out /absolute/path/receipt.json
+```
+
+把回执交回 Hub 执行 `kioku enroll --receipt /absolute/path/receipt.json`。机器配对后，在写入节点创建空间：
+
+```sh
+kioku space add --space work
+kioku space map --space work --path /absolute/project/knowledge
+kioku shared map --path /absolute/project/shared
+```
+
+父目录必须已存在，入口路径不能覆盖已有文件。空间本体位于 `<安装根>/data/spaces/work/`；映射只提供入口，不自动触发任何程序读取。
+
+Hub MCP 的授权示例：
+
+```sh
+kioku mcp enable --public-url https://knowledge.example/mcp
+kioku mcp oauth enable
+kioku mcp oauth approve --read-space '*' --shared read-write
+```
+
+该凭证用于浏览器授权页面，授予读取所有当前及未来空间、读写 Shared；不授予任何空间写入权限。公网 HTTPS 由反向代理提供。详见 [MCP](knowledge/mcp.md) 与 [OAuth](knowledge/oauth.md)。
+
+## 升级与文档
+
+- [使用指南](knowledge/usage.md)：安装、节点、空间、目录映射及服务。
+- [升级指南](knowledge/upgrading.md)：版本 1 目录与配置的预览、迁移、重新授权和中断恢复。
+- [术语表](knowledge/GLOSSARY.md) 与 [架构决策](knowledge/adr/README.md)。
+
+默认安装根为 `~/.kiokunet`，可通过 `--home` 或 `KIOKU_HOME` 指定。同步与副本刷新是最终一致，产品不提供知识历史版本恢复；只读副本用于防误写，不隔离主动绕过它的本机所有者。
+
+## 开发验证
+
+```sh
 npm run typecheck
+npm test
+npm run test:prepare
+npm run test:integration
 npm run format:check
 ```
 
-测试使用临时目录，集成测试需要本地端口权限。防误写测试使用当前非 root 账号；原生服务和 Skill 分发测试需显式启用。[反馈问题](https://github.com/youranreus/KiokuNet/issues) 时请附系统、版本和去除敏感信息的复现步骤。
-
-### 发布
-
-维护者更新版本、提交并推送 `master` 后，在干净工作区执行 `npm run release`，将同一个安装包发布到 npm 和 GitHub。当前源码中的发布脚本会在 npm 接受上传后自动等待版本可见并校验哈希：默认每 15 秒检查一次，最多等待 10 分钟，通过后继续公开 GitHub Release。超时保留草稿和附件，等待期间不重复上传 npm。
-
-`--dry-run` 预览计划；`--draft` 只准备 GitHub 草稿，不发布 npm。单独 `git push` 不会触发发布。认证、等待参数和中断恢复见 [发布指南](knowledge/releasing.md)。
+集成测试使用临时目录中的独立节点。原生服务安装与真实 skill 分发测试分别由 `KIOKU_TEST_NATIVE=1`、`KIOKU_TEST_SKILLS=1` 显式开启。

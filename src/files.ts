@@ -115,7 +115,7 @@ export async function verifyFiles(
 
 // An interrupted migration can resume only while its destination still matches
 // the transferred bundle. Publish missing files without replacing user edits.
-export async function seedRaw(
+export async function seedSpace(
   source: string,
   target: string,
   files: FileEntry[],

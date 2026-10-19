@@ -1,3 +1,5 @@
+> 历史记录：当前产品概念与接口以 [ADR 0009](adr/0009-nodes-spaces-and-explicit-access.md) 和[使用指南](usage.md)为准；本文保留当时的设计与验证事实。
+
 # Markdown 知识文件元数据规范与 KiokuNet 适用性
 
 - 调研日期：2026-10-16，Asia/Shanghai。

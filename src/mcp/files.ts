@@ -15,7 +15,7 @@ import { join, dirname, basename } from "node:path";
 import { randomUUID } from "node:crypto";
 import { setImmediate } from "node:timers/promises";
 import { Config, Failure, requireThat, sha } from "../core.js";
-import { IdentityBinding, McpSettings, settings } from "./config.js";
+import { AccessGrant, McpSettings, settings } from "./config.js";
 
 export function hidden(name: string) {
   // Keep controls inaccessible through case aliases on macOS filesystems.
@@ -31,33 +31,37 @@ export function hidden(name: string) {
 type Root = {
   path: string;
   physical: string;
-  source: string;
+  space: string;
   writable: boolean;
 };
-export function roots(c: Config, key: IdentityBinding): Root[] {
+export function roots(c: Config, key: AccessGrant): Root[] {
+  const p = key.permissions;
   return [
-    {
-      path: "/shared",
-      physical: "shared",
-      source: "shared",
-      writable: key.role === "leader",
-    },
-    ...c.agents
+    ...(p.shared === "none"
+      ? []
+      : [
+          {
+            path: "/shared",
+            physical: "shared",
+            space: "shared",
+            writable: p.shared === "read-write",
+          },
+        ]),
+    ...c.spaces
       .filter(
-        (a) =>
-          a.active &&
-          a.registration !== "conflict" &&
-          (key.role === "leader" || a.id === key.sourceId),
+        (s) =>
+          s.active &&
+          s.registration !== "conflict" &&
+          (p.readSpaces === "*" ||
+            p.readSpaces.includes(s.id) ||
+            p.writeSpaces.includes(s.id)),
       )
-      .map((a) => ({
-        path: `/raw/${a.id}`,
-        physical: `agents/${a.id}/raw`,
-        source: a.id,
+      .map((s) => ({
+        path: `/spaces/${s.id}`,
+        physical: `spaces/${s.id}`,
+        space: s.id,
         writable:
-          key.role === "member" &&
-          a.id === key.sourceId &&
-          a.local &&
-          a.deviceId === c.deviceId,
+          p.writeSpaces.includes(s.id) && s.local && s.deviceId === c.deviceId,
       })),
   ];
 }
@@ -118,7 +122,7 @@ export class KnowledgeFiles {
   private visible: Root[];
   constructor(
     private c: Config,
-    private key: IdentityBinding,
+    private key: AccessGrant,
     private reauthorize: () => Promise<void> = async () => {},
   ) {
     this.limits = settings(c);
@@ -132,7 +136,7 @@ export class KnowledgeFiles {
     requireThat(
       root && (!write || root.writable),
       "FORBIDDEN",
-      "This identity cannot access the requested path for this operation.",
+      "This connection cannot access the requested path for this operation.",
     );
     return {
       root,
@@ -275,20 +279,31 @@ export class KnowledgeFiles {
     }[] = [];
     if (path === "/") {
       entries = [
-        { path: "/raw", name: "raw", type: "directory", writable: false },
-        {
-          path: "/shared",
-          name: "shared",
-          type: "directory",
-          writable: this.key.role === "leader",
-        },
+        ...(this.visible.some((r) => r.path.startsWith("/spaces/"))
+          ? [
+              {
+                path: "/spaces",
+                name: "spaces",
+                type: "directory",
+                writable: false,
+              },
+            ]
+          : []),
+        ...this.visible
+          .filter((r) => r.path === "/shared")
+          .map((r) => ({
+            path: r.path,
+            name: "shared",
+            type: "directory",
+            writable: r.writable,
+          })),
       ];
-    } else if (path === "/raw") {
+    } else if (path === "/spaces") {
       entries = this.visible
-        .filter((r) => r.path.startsWith("/raw/"))
+        .filter((r) => r.path.startsWith("/spaces/"))
         .map((r) => ({
           path: r.path,
-          name: r.source,
+          name: r.space,
           type: "directory",
           writable: r.writable,
         }));
@@ -460,13 +475,13 @@ export class KnowledgeFiles {
       "Result limit exceeds the configured maximum.",
     );
     validPath(path);
-    if (path !== "/" && path !== "/raw") this.locate(path);
+    if (path !== "/" && path !== "/spaces") this.locate(path);
     const scope =
       path === "/"
         ? this.visible.map((r) => r.path)
-        : path === "/raw"
+        : path === "/spaces"
           ? this.visible
-              .filter((r) => r.path.startsWith("/raw/"))
+              .filter((r) => r.path.startsWith("/spaces/"))
               .map((r) => r.path)
           : [path];
     const deadline = Date.now() + this.limits.searchTimeoutMs;
@@ -512,7 +527,7 @@ export class KnowledgeFiles {
           matchPath ? target.relative.slice(1) : basename(path),
         );
         if (accepted(found))
-          add({ path, source: target.root.source, keywords: found });
+          add({ path, space: target.root.space, keywords: found });
       } else {
         let content: string;
         try {
@@ -532,7 +547,7 @@ export class KnowledgeFiles {
           if (
             !add({
               path,
-              source: target.root.source,
+              space: target.root.space,
               line: i + 1,
               snippet: line.slice(start, start + 400),
               snippetTruncated: start > 0 || line.length > start + 400,

@@ -18,7 +18,7 @@ import {
   resetOAuth,
   revokeConnection,
 } from "../dist/mcp/oauth-store.js";
-import { fixture, call, cli } from "./helpers/mcp.mjs";
+import { fixture, call, cli, permissionsFor } from "./helpers/mcp.mjs";
 import { oauthFixture, publicUrl, redirectUri } from "./helpers/oauth.mjs";
 
 test("OAuth is opt-in, requires HTTPS discovery and leaves static Bearer access intact", async (t) => {
@@ -52,23 +52,23 @@ test("OAuth is opt-in, requires HTTPS discovery and leaves static Bearer access 
   ).json();
   assert.equal(resource.resource, publicUrl);
   assert.equal(
-    (await call(f.memberClient, "read_file", { path: "/shared/INDEX.md" }))
+    (await call(f.writerClient, "read_file", { path: "/shared/INDEX.md" }))
       .isError,
     false,
   );
 });
 
-test("OAuth member and Leader connections preserve knowledge ownership and independent revocation", async (t) => {
+test("OAuth scoped connections preserve knowledge ownership and independent revocation", async (t) => {
   const f = await oauthFixture(t),
     member = await f.grant(),
-    leader = await f.grant("leader");
-  const memberClient = await f.clientFor(member.tokens.access_token),
-    leaderClient = await f.clientFor(leader.tokens.access_token);
+    leader = await f.grant("curator");
+  const writerClient = await f.clientFor(member.tokens.access_token),
+    curatorClient = await f.clientFor(leader.tokens.access_token);
   assert.equal(member.tokens.expires_in, 900);
   assert.equal(
     (
-      await call(memberClient, "create_file", {
-        path: "/raw/writer/oauth.md",
+      await call(writerClient, "create_file", {
+        path: "/spaces/writer/oauth.md",
         content: "OAuth knowledge",
       })
     ).isError,
@@ -76,7 +76,7 @@ test("OAuth member and Leader connections preserve knowledge ownership and indep
   );
   assert.equal(
     (
-      await call(memberClient, "create_file", {
+      await call(writerClient, "create_file", {
         path: "/shared/no.md",
         content: "no",
       })
@@ -84,18 +84,21 @@ test("OAuth member and Leader connections preserve knowledge ownership and indep
     "FORBIDDEN",
   );
   assert.equal(
-    (await call(memberClient, "read_file", { path: "/raw/other/secret.md" }))
+    (await call(writerClient, "read_file", { path: "/spaces/other/secret.md" }))
       .error.code,
     "FORBIDDEN",
   );
   assert.equal(
-    (await call(leaderClient, "read_file", { path: "/raw/writer/oauth.md" }))
-      .content,
+    (
+      await call(curatorClient, "read_file", {
+        path: "/spaces/writer/oauth.md",
+      })
+    ).content,
     "OAuth knowledge",
   );
   assert.equal(
     (
-      await call(leaderClient, "create_file", {
+      await call(curatorClient, "create_file", {
         path: "/shared/curated.md",
         content: "curated",
       })
@@ -104,8 +107,8 @@ test("OAuth member and Leader connections preserve knowledge ownership and indep
   );
   assert.equal(
     (
-      await call(leaderClient, "create_file", {
-        path: "/raw/writer/no.md",
+      await call(curatorClient, "create_file", {
+        path: "/spaces/writer/no.md",
         content: "no",
       })
     ).error.code,
@@ -113,7 +116,7 @@ test("OAuth member and Leader connections preserve knowledge ownership and indep
   );
   const connections = await listConnections(f.home);
   assert.equal(connections.length, 2);
-  assert.equal(connections[0].agentId, "writer");
+  assert.deepEqual(connections[0].permissions.writeSpaces, ["writer"]);
   assert.equal(
     JSON.stringify(connections).includes(member.tokens.refresh_token),
     false,
@@ -123,7 +126,7 @@ test("OAuth member and Leader connections preserve knowledge ownership and indep
   assert.equal((await f.refresh(member)).status, 400);
   assert.equal((await f.access(leader.tokens.access_token)).status, 405);
   assert.equal(
-    (await call(f.memberClient, "read_file", { path: "/shared/INDEX.md" }))
+    (await call(f.writerClient, "read_file", { path: "/shared/INDEX.md" }))
       .isError,
     false,
   );
@@ -148,7 +151,8 @@ test("consent binds browser, checks origin, consumes credentials once, displays 
   const f = await oauthFixture(t),
     client = await f.register({ client_name: '<script>alert("x")</script>' });
   const flow = await f.begin(client),
-    credential = (await createApproval(f.home, "writer")).credential;
+    credential = (await createApproval(f.home, permissionsFor("writer")))
+      .credential;
   assert.match(flow.html, /&lt;script&gt;/);
   assert.doesNotMatch(flow.html, /<script>/);
   assert.match(flow.response.headers.get("set-cookie"), /Secure/);
@@ -196,7 +200,7 @@ test("consent binds browser, checks origin, consumes credentials once, displays 
   );
   const html = await review.text();
   assert.match(html, /writer/);
-  assert.match(html, /只读 shared/);
+  assert.match(html, /Shared：只读/);
   const other = await f.begin(client);
   assert.equal(
     (await f.consent(other, { action: "review", credential })).status,
@@ -209,8 +213,8 @@ test("consent binds browser, checks origin, consumes credentials once, displays 
     "access_denied",
   );
   assert.equal((await listConnections(f.home)).length, 0);
-  await assert.rejects(() => createApproval(f.home, "remote"), {
-    code: "INVALID_BINDING",
+  await assert.rejects(() => createApproval(f.home, permissionsFor("remote")), {
+    code: "WRITER_CONFLICT",
   });
 });
 
@@ -310,7 +314,8 @@ test("only successful knowledge tools extend 90-day idle lifetime; active grants
   const idleClient = await f.clientFor(idle.tokens.access_token);
   await idleClient.listTools();
   assert.equal(
-    (await call(idleClient, "read_file", { path: "/raw/other/no.md" })).isError,
+    (await call(idleClient, "read_file", { path: "/spaces/other/no.md" }))
+      .isError,
     true,
   );
   assert.equal((await listConnections(f.home))[0].lastUsedAt, created);
@@ -347,7 +352,7 @@ test("approval credentials and authorization codes expire independently", async 
   t.mock.method(Date, "now", () => now);
   const f = await oauthFixture(t),
     client = await f.register();
-  const approval = await createApproval(f.home, "writer");
+  const approval = await createApproval(f.home, permissionsFor("writer"));
   now += APPROVAL_MS;
   const flow = await f.begin(client);
   assert.equal(
@@ -364,14 +369,14 @@ test("approval credentials and authorization codes expire independently", async 
   assert.equal((await f.exchange(client, approved)).status, 400);
 });
 
-test("binding changes revoke old grants permanently, even after disable/enable and role round trips", async (t) => {
+test("binding changes revoke old grants permanently, even after disable/enable and ownership round trips", async (t) => {
   const f = await oauthFixture(t);
   for (const mutate of [
     (a) => {
       a.active = false;
     },
     (a) => {
-      a.role = "leader";
+      a.registration = "conflict";
     },
     (a) => {
       a.deviceId = "other-device";
@@ -380,7 +385,7 @@ test("binding changes revoke old grants permanently, even after disable/enable a
     const g = await f.grant(),
       before = await load(f.home),
       after = structuredClone(before);
-    mutate(after.agents.find((a) => a.id === "writer"));
+    mutate(after.spaces.find((a) => a.id === "writer"));
     await save(f.home, after);
     // No HTTP request while changed: persisted identity revision still prevents revival.
     await save(f.home, before);
@@ -450,9 +455,9 @@ test("OAuth reset and state loss invalidate old credentials without changing kno
   await resetOAuth(f.home);
   assert.equal((await f.access(g.tokens.access_token)).status, 401);
   assert.equal((await f.refresh(g)).status, 400);
-  assert.deepEqual((await load(f.home)).agents, before.agents);
+  assert.deepEqual((await load(f.home)).spaces, before.spaces);
   assert.equal(
-    (await call(f.memberClient, "read_file", { path: "/shared/INDEX.md" }))
+    (await call(f.writerClient, "read_file", { path: "/shared/INDEX.md" }))
       .isError,
     false,
   );
@@ -466,7 +471,7 @@ test("OAuth reset and state loss invalidate old credentials without changing kno
 test("CLI manages OAuth approvals and connections without leaking stored credentials", async (t) => {
   const f = await oauthFixture(t);
   assert.equal(
-    cli(f.dir, ["mcp", "oauth", "approve", "--agent", "writer"]).ok,
+    cli(f.dir, ["mcp", "oauth", "approve", "--write-space", "writer"]).ok,
     true,
   );
   const g = await f.grant();
@@ -537,7 +542,7 @@ test("official SDK performs discovery, DCR, PKCE exchange and refresh against re
     id: /name="request" value="([a-f0-9]+)"/.exec(html)[1],
     cookie: response.headers.get("set-cookie").split(";")[0],
   };
-  const approval = await createApproval(f.home, "writer");
+  const approval = await createApproval(f.home, permissionsFor("writer"));
   assert.equal(
     (
       await f.consent(flow, {
@@ -652,7 +657,7 @@ test("changing the public URL and back never revives grants; corrupted storage f
   assert.equal((await f.access(fresh.tokens.access_token)).status, 401);
   assert.equal(await readFile(file, "utf8"), "broken-json");
   assert.equal(
-    (await call(f.memberClient, "read_file", { path: "/shared/INDEX.md" }))
+    (await call(f.writerClient, "read_file", { path: "/shared/INDEX.md" }))
       .isError,
     false,
   );

@@ -41,7 +41,7 @@ export function validId(id: string): string {
   requireThat(
     typeof id === "string" && idPattern.test(id),
     "INVALID_ID",
-    "Identity must use 1–64 lowercase letters, digits, _ or -.",
+    "Identifiers must use 1–64 lowercase letters, digits, _ or -.",
   );
   return id;
 }
@@ -146,9 +146,8 @@ export async function validateRoots(
   );
   return r;
 }
-export interface Agent {
+export interface Space {
   id: string;
-  role: "leader" | "member";
   deviceId: string;
   active: boolean;
   local: boolean;
@@ -156,6 +155,7 @@ export interface Agent {
   registration?: "pending" | "registered" | "conflict";
   registrationError?: string;
   authorizationRevision?: string;
+  syncFolderId?: string;
 }
 export interface Peer {
   deviceId: string;
@@ -163,36 +163,37 @@ export interface Peer {
   revoked?: boolean;
 }
 export interface Invitation {
-  version: 1;
+  version: 2;
   kind: "invitation";
   id: string;
   networkId: string;
-  agentId?: string;
+  spaceId?: string;
   hubDeviceId: string;
   hubAddress: string;
   hubPublicKey: string;
   issuedAt: string;
   seedHash?: string;
+  syncFolderId?: string;
 }
 export interface Envelope<T> {
   payload: T;
   signature: string;
 }
 export interface Receipt {
-  version: 1;
+  version: 2;
   kind: "receipt";
   invitation: Envelope<Invitation>;
   deviceId: string;
   publicKey: string;
 }
-export interface Workspace {
-  sourceId: string;
-  raw: string;
-  shared: string;
-  allRaw?: string;
+export interface DirectoryMapping {
+  kind: "space" | "shared" | "spaces";
+  spaceId?: string;
+  path: string;
+  writable: boolean;
 }
 export interface Config {
-  version: 1;
+  version: 2;
   networkId: string;
   mode: "hub" | "node";
   root: string;
@@ -200,7 +201,7 @@ export interface Config {
   hubDeviceId: string;
   hubAddress: string;
   publicKey: string;
-  agents: Agent[];
+  spaces: Space[];
   peers: Peer[];
   invitations: Record<
     string,
@@ -215,89 +216,68 @@ export interface Config {
     guiPort: number;
     listenPort: number;
   };
-  workspaces?: Workspace[];
+  mappings?: DirectoryMapping[];
   mcp?: McpConfig;
+  oauthRevision?: string;
 }
 export async function load(home: string): Promise<Config> {
   const file = join(home, "config.json");
   if (!(await exists(file)))
     throw new Failure("NOT_INITIALIZED", "Run kioku init or join first.");
+  const upgrade = join(home, "upgrade-v2.json");
+  if (await exists(upgrade))
+    requireThat(
+      (await readJson<{ completed?: boolean }>(upgrade)).completed,
+      "UPGRADE_IN_PROGRESS",
+      "Resume kioku upgrade apply before starting services or accessing knowledge.",
+    );
   const c = await readJson<Config>(file);
   requireThat(
-    c.version === 1 && Array.isArray(c.agents),
-    "INVALID_CONFIG",
-    "Unsupported or invalid KiokuNet configuration.",
+    c.version === 2 && Array.isArray(c.spaces),
+    "UPGRADE_REQUIRED",
+    "Unsupported configuration. For version 1 run kioku upgrade plan, then upgrade apply after stopping services.",
   );
   return c;
 }
 export async function save(home: string, c: Config) {
-  // A disable/re-enable or role/ownership round trip must not resurrect grants.
+  // A disable/re-enable or ownership round trip must not resurrect grants.
   let previous: Config | undefined;
   try {
     previous = await readJson<Config>(join(home, "config.json"));
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
   }
-  const fingerprint = (config: Config, a: Agent) =>
+  c.oauthRevision =
+    previous && previous.mcp?.publicUrl === c.mcp?.publicUrl
+      ? previous.oauthRevision || randomUUID()
+      : randomUUID();
+  const fingerprint = (config: Config, a: Space) =>
     JSON.stringify([
       config.networkId,
       config.deviceId,
       config.root,
       config.mode,
-      config.mcp?.publicUrl,
       a.id,
-      a.role,
       a.deviceId,
       a.local,
       a.active,
       a.registration === "conflict",
     ]);
-  for (const agent of c.agents) {
-    const old = previous?.agents.find((a) => a.id === agent.id);
-    agent.authorizationRevision =
-      previous && old && fingerprint(previous, old) === fingerprint(c, agent)
+  for (const space of c.spaces) {
+    const old = previous?.spaces?.find((a) => a.id === space.id);
+    space.authorizationRevision =
+      previous && old && fingerprint(previous, old) === fingerprint(c, space)
         ? old.authorizationRevision || randomUUID()
         : randomUUID();
   }
   await atomicJson(join(home, "config.json"), c);
 }
-export function ownAgent(c: Config, explicit?: string): Agent {
-  const env = process.env.KIOKU_AGENT_ID;
-  requireThat(
-    !(env && explicit && env !== explicit),
-    "IDENTITY_CONFLICT",
-    "--agent conflicts with KIOKU_AGENT_ID.",
-  );
-  const eligible = c.agents.filter((a) => a.local && a.active);
-  const chosen = explicit || env;
-  if (!chosen && eligible.length !== 1)
-    throw new Failure("IDENTITY_REQUIRED", "Bind an Agent explicitly.", {
-      candidates: eligible.map((a) => a.id),
-    });
-  const a = chosen ? eligible.find((a) => a.id === chosen) : eligible[0];
-  requireThat(a, "UNKNOWN_AGENT", "Identity is not an active local Agent.");
-  return a;
-}
-export const rawPath = (c: Config, id: string) =>
-  join(c.root, "agents", validId(id), "raw");
-export function context(c: Config, home: string, explicit?: string) {
-  const a = ownAgent(c, explicit);
-  return {
-    version: 1,
-    networkId: c.networkId,
-    agentId: a.id,
-    role: a.role,
-    deviceId: c.deviceId,
-    root: c.root,
-    raw: rawPath(c, a.id),
-    shared: join(c.root, "shared"),
-    ...(a.role === "leader"
-      ? {
-          allRaw: join(c.root, "agents"),
-          progress: join(rawPath(c, a.id), ".kioku-curation"),
-        }
-      : {}),
-  };
+export const spacePath = (c: Config, id: string) =>
+  join(c.root, "spaces", validId(id));
+export function spaceInfo(c: Config, id: string) {
+  const space = c.spaces.find((s) => s.id === id);
+  requireThat(space, "UNKNOWN_SPACE", "Unknown knowledge space.");
+  return { ...space, path: spacePath(c, id) };
 }
 export async function createKeys(home: string) {
   const path = join(home, "identity.pem");

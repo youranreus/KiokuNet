@@ -11,13 +11,17 @@ import {
   validId,
 } from "../core.js";
 
-export interface IdentityBinding {
-  id: string;
-  agentId: string;
-  role: "member" | "leader";
-  sourceId?: string;
+export interface AccessPermissions {
+  readSpaces: "*" | string[];
+  writeSpaces: string[];
+  shared: "none" | "read" | "read-write";
 }
-export interface McpKey extends IdentityBinding {
+export interface AccessGrant {
+  id: string;
+  permissions: AccessPermissions;
+  bindingRevision: string;
+}
+export interface McpKey extends AccessGrant {
   hash: string;
   createdAt: string;
   revokedAt?: string;
@@ -60,61 +64,117 @@ export function hubOnly(c: Config) {
     "MCP is only available on the Hub.",
   );
 }
-export function binding(
+export function normalizePermissions(
   c: Config,
-  key: Pick<McpKey, "agentId" | "role" | "sourceId">,
-) {
-  const agent = c.agents.find((a) => a.id === key.agentId);
+  input: AccessPermissions,
+): AccessPermissions {
   requireThat(
-    agent?.active &&
-      agent.local &&
-      agent.deviceId === c.deviceId &&
-      agent.role === key.role &&
-      agent.registration !== "conflict",
-    "INVALID_BINDING",
-    "The key requires an active Hub identity with its original role.",
+    input &&
+      (input.readSpaces === "*" || Array.isArray(input.readSpaces)) &&
+      Array.isArray(input.writeSpaces) &&
+      ["none", "read", "read-write"].includes(input.shared),
+    "INVALID_PERMISSIONS",
+    "Specify space read/write scopes and a Shared access level.",
   );
+  const permissions: AccessPermissions = {
+    readSpaces:
+      input.readSpaces === "*"
+        ? "*"
+        : [...new Set(input.readSpaces.map(validId))].sort(),
+    writeSpaces: [...new Set(input.writeSpaces.map(validId))].sort(),
+    shared: input.shared,
+  };
+  for (const id of new Set([
+    ...(permissions.readSpaces === "*" ? [] : permissions.readSpaces),
+    ...permissions.writeSpaces,
+  ])) {
+    const space = c.spaces.find(
+      (s) => s.id === id && s.active && s.registration !== "conflict",
+    );
+    requireThat(space, "UNKNOWN_SPACE", `No active space: ${id}.`);
+    requireThat(
+      !permissions.writeSpaces.includes(id) ||
+        (space.local && space.deviceId === c.deviceId),
+      "WRITER_CONFLICT",
+      `Only the owning node may write space ${id}; Hub MCP cannot forward writes.`,
+    );
+  }
+  return permissions;
+}
+export function accessRevision(c: Config, permissions: AccessPermissions) {
+  const ids = [
+    ...new Set([
+      ...(permissions.readSpaces === "*" ? [] : permissions.readSpaces),
+      ...permissions.writeSpaces,
+    ]),
+  ].sort();
+  return sha(
+    JSON.stringify([
+      c.networkId,
+      c.deviceId,
+      c.root,
+      c.mode,
+      permissions,
+      ids.map((id) => {
+        const space = c.spaces.find((s) => s.id === id);
+        return [
+          id,
+          space?.authorizationRevision,
+          space?.active,
+          space?.local,
+          space?.deviceId,
+          space?.registration === "conflict",
+        ];
+      }),
+    ]),
+  );
+}
+export function grantAccess(
+  c: Config,
+  permissions: AccessPermissions,
+): AccessGrant {
+  hubOnly(c);
+  permissions = normalizePermissions(c, permissions);
+  return {
+    id: randomBytes(16).toString("hex"),
+    permissions,
+    bindingRevision: accessRevision(c, permissions),
+  };
+}
+export function binding(c: Config, grant: AccessGrant) {
+  hubOnly(c);
+  normalizePermissions(c, grant.permissions);
   requireThat(
-    key.role === "leader"
-      ? key.sourceId === undefined
-      : key.sourceId === agent.id,
+    grant.bindingRevision === accessRevision(c, grant.permissions),
     "INVALID_BINDING",
-    "Member keys must bind their own Hub source.",
+    "Access scope or space ownership changed; authorize a new connection.",
   );
 }
 export async function createKey(
   home: string,
   c: Config,
-  agentId: string,
-  role: string,
+  permissions: AccessPermissions,
   replaceId?: string,
 ) {
-  hubOnly(c);
-  validId(agentId);
-  requireThat(
-    role === "member" || role === "leader",
-    "USAGE",
-    "Role must be member or leader.",
-  );
+  const access = grantAccess(c, permissions);
   const key: McpKey = {
+    ...access,
     id: randomBytes(8).toString("hex"),
-    agentId,
-    role,
-    ...(role === "member" ? { sourceId: agentId } : {}),
     hash: "",
     createdAt: new Date().toISOString(),
   };
-  binding(c, key);
   const token = `kioku_${key.id}_${randomBytes(32).toString("base64url")}`;
   key.hash = sha(token);
   c.mcp ||= { ...settings(c), keys: [] };
   if (replaceId) {
     const old = c.mcp.keys.find((k) => k.id === replaceId && !k.revokedAt);
     requireThat(
-      old && old.agentId === agentId && old.role === role,
+      old &&
+        JSON.stringify(old.permissions) === JSON.stringify(key.permissions),
       "UNKNOWN_KEY",
-      "No active matching key.",
+      "No active key with matching scopes.",
     );
+    binding(c, old);
     old.revokedAt = new Date().toISOString();
   }
   c.mcp.keys.push(key);

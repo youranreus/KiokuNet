@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
-import { fixture } from "./mcp.mjs";
+import { fixture, permissionsFor } from "./mcp.mjs";
 import { createApproval } from "../../dist/mcp/oauth-store.js";
 
 export const publicUrl = "https://knowledge.example/mcp";
@@ -82,7 +82,7 @@ export function oauthEndpoints(f) {
   const approve = async (client, agent = "writer") => {
     const flow = await begin(client);
     assert.equal(flow.response.status, 200, flow.html);
-    const approval = await createApproval(f.home, agent);
+    const approval = await createApproval(f.home, permissionsFor(agent));
     const review = await consent(flow, {
       action: "review",
       credential: approval.credential,

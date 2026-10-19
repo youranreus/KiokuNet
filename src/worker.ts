@@ -10,7 +10,7 @@ import {
   Failure,
 } from "./core.js";
 import { online } from "./sync.js";
-import { registerSources } from "./registration.js";
+import { registerSpaces } from "./registration.js";
 import { refreshView } from "./views.js";
 import { rm } from "node:fs/promises";
 import { McpRuntime } from "./mcp/runtime.js";
@@ -91,7 +91,9 @@ try {
           async () => {
             const current = await load(home);
             await refreshView(current, home);
-            await registerSources(current, home);
+            if (current.mappings?.some((m) => m.kind === "spaces"))
+              await refreshView(current, home, "spaces");
+            await registerSpaces(current, home);
           },
           0,
         );

@@ -12,7 +12,7 @@ function call(home, args) {
     ...process.env,
     KIOKU_SYNCTHING: process.env.KIOKU_SYNCTHING || resolve(".tools/syncthing"),
   };
-  delete env.KIOKU_AGENT_ID;
+  delete env.KIOKU_SPACE_ID;
   return JSON.parse(
     execFileSync(process.execPath, [cli, ...args, "--home", home, "--json"], {
       env,
@@ -43,8 +43,6 @@ test(
     try {
       call(home, [
         "init",
-        "--agent",
-        "leader",
         "--root",
         join(home, "data"),
         "--address",

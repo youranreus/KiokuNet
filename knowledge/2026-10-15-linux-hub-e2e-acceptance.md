@@ -1,3 +1,5 @@
+> 历史记录：当前产品概念与接口以 [ADR 0009](adr/0009-nodes-spaces-and-explicit-access.md) 和[使用指南](usage.md)为准；本文保留当时的设计与验证事实。
+
 # KiokuNet Linux Hub 与 Mac 首次端到端验收
 
 2026-10-15，Asia/Shanghai（UTC+08:00）。**KiokuNet v0.1.0 已在真实 Linux Hub 与 Mac 节点之间完成 Raw 上传、Hermes Leader 自动提炼、shared 回传的完整链路验收。** Mac 最终 `doctor` 全部 10 项通过。本记录覆盖一次真实部署与知识流转，不代表持续可用性或五分钟时效承诺。

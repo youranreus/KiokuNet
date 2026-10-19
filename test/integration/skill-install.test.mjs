@@ -15,7 +15,7 @@ test(
       KIOKU_SYNCTHING:
         process.env.KIOKU_SYNCTHING || resolve(".tools/syncthing"),
     };
-    delete env.KIOKU_AGENT_ID;
+    delete env.KIOKU_SPACE_ID;
     const call = (args) => {
       const result = spawnSync(
         process.execPath,
@@ -43,8 +43,6 @@ test(
       assert.equal(
         call([
           "init",
-          "--agent",
-          "leader",
           "--root",
           join(d, "config", "data"),
           "--address",
@@ -86,7 +84,7 @@ test(
       }
       for (const file of [
         "setup.md",
-        "workspaces.md",
+        "spaces.md",
         "operations.md",
         "lifecycle.md",
       ]) {

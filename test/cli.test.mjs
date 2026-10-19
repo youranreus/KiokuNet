@@ -11,7 +11,7 @@ test("an unregistered caller gets a structured error instead of choosing an iden
   try {
     const r = spawnSync(
       process.execPath,
-      [cli, "context", "--home", home, "--json"],
+      [cli, "status", "--home", home, "--json"],
       { encoding: "utf8" },
     );
     assert.equal(r.status, 2);
@@ -26,12 +26,10 @@ test("noninteractive setup rejects missing or unsafe inputs before creating depe
   try {
     for (const [args, code] of [
       [["init"], "MISSING_ARGUMENT"],
-      [["context", "--unknown"], "USAGE"],
+      [["status", "--unknown"], "USAGE"],
       [
         [
           "init",
-          "--agent",
-          "leader",
           "--root",
           join(home, "elsewhere"),
           "--address",

@@ -1,9 +1,12 @@
 # KiokuNet 架构决策
 
+当前产品模型以 [0009 机器、知识空间与显式授权](0009-nodes-spaces-and-explicit-access.md) 为准；旧记录保留为历史依据。
+
 记录已确认且会影响后续数据模型或职责边界的重要取舍。ADR 的 accepted 表示设计已确认，不代表代码已实现。
 
 | 决策 | 日期 | 状态与关系 |
 | --- | --- | --- |
+| [0009 机器、知识空间与显式授权](0009-nodes-spaces-and-explicit-access.md) | 2026-10-19 | 已接受；替代 Agent/Leader 与独立 Workspace 模型 |
 | [0001 本地文件与单写入归属](0001-local-files-and-single-writer.md) | 2026-10-15 | 部分由 0004 替代 |
 | [0002 基础设施与 Agent 执行分离](0002-separate-infrastructure-and-agent-execution.md) | 2026-10-15 | 部分由 0004 替代 |
 | [0003 长期身份与调用绑定分离](0003-stable-agent-identity-and-binding.md) | 2026-10-15 | 部分由 0004 替代 |

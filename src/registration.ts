@@ -16,17 +16,17 @@ import {
 import { reconcile } from "./sync.js";
 
 interface Request {
-  version: 1;
+  version: 2;
   networkId: string;
   deviceId: string;
-  sources: { id: string; active: boolean }[];
+  spaces: { id: string; active: boolean; syncFolderId?: string }[];
 }
 interface Decision {
-  version: 1;
+  version: 2;
   networkId: string;
   deviceId: string;
   requestHash: string;
-  sources: { id: string; accepted: boolean; error?: string }[];
+  spaces: { id: string; accepted: boolean; error?: string }[];
 }
 async function document<T>(path: string): Promise<Envelope<T> | undefined> {
   let file;
@@ -57,41 +57,45 @@ async function publish<T>(home: string, path: string, payload: T) {
 
 // Authentication is pinned by machine enrollment. Each device has separate
 // request/reply folders, so one peer cannot submit another peer's manifest.
-export async function registerSources(c: Config, home: string): Promise<void> {
+export async function registerSpaces(c: Config, home: string): Promise<void> {
   if (c.mode === "node") {
     const request: Request = {
-      version: 1,
+      version: 2,
       networkId: c.networkId,
       deviceId: c.deviceId,
-      sources: c.agents
-        .filter((a) => a.local && a.role === "member")
-        .map((a) => ({ id: a.id, active: a.active }))
+      spaces: c.spaces
+        .filter((a) => a.local)
+        .map((a) => ({
+          id: a.id,
+          active: a.active,
+          ...(a.syncFolderId ? { syncFolderId: a.syncFolderId } : {}),
+        }))
         .sort((a, b) => a.id.localeCompare(b.id)),
     };
     await publish(
       home,
-      join(registrationPath(c, c.deviceId, "requests"), "sources.json"),
+      join(registrationPath(c, c.deviceId, "requests"), "spaces.json"),
       request,
     );
     const reply = await document<Decision>(
-      join(registrationPath(c, c.deviceId, "replies"), "sources.json"),
+      join(registrationPath(c, c.deviceId, "replies"), "spaces.json"),
     );
     if (!reply) return;
     const hub = c.peers.find((p) => p.deviceId === c.hubDeviceId && !p.revoked);
     requireThat(hub, "UNKNOWN_HUB", "Hub signing key is unavailable.");
     const decision = verified(reply, hub.publicKey);
     requireThat(
-      decision.version === 1 &&
+      decision.version === 2 &&
         decision.networkId === c.networkId &&
         decision.deviceId === c.deviceId &&
-        Array.isArray(decision.sources),
+        Array.isArray(decision.spaces),
       "INVALID_REGISTRATION",
       "Registration response belongs to another node or network.",
     );
     if (decision.requestHash !== sha(JSON.stringify(request))) return;
     let changed = false;
-    for (const a of c.agents.filter((a) => a.local && a.role === "member")) {
-      const result = decision.sources.find((s) => s.id === a.id);
+    for (const a of c.spaces.filter((a) => a.local)) {
+      const result = decision.spaces.find((s) => s.id === a.id);
       if (!result) continue;
       const state = result.accepted ? "registered" : "conflict";
       if (a.registration !== state || a.registrationError !== result.error) {
@@ -112,40 +116,44 @@ export async function registerSources(c: Config, home: string): Promise<void> {
   for (const peer of c.peers.filter((p) => !p.revoked)) {
     try {
       const incoming = await document<Request>(
-        join(registrationPath(c, peer.deviceId, "requests"), "sources.json"),
+        join(registrationPath(c, peer.deviceId, "requests"), "spaces.json"),
       );
       if (!incoming) continue;
       const request = verified(incoming, peer.publicKey);
       requireThat(
-        request.version === 1 &&
+        request.version === 2 &&
           request.networkId === c.networkId &&
           request.deviceId === peer.deviceId &&
-          Array.isArray(request.sources) &&
-          request.sources.length <= 1000,
+          Array.isArray(request.spaces) &&
+          request.spaces.length <= 1000,
         "INVALID_REGISTRATION",
-        "Invalid node source manifest.",
+        "Invalid node space manifest.",
       );
       const ids = new Set<string>();
-      for (const item of request.sources) {
+      for (const item of request.spaces) {
         validId(item.id);
         requireThat(
-          typeof item.active === "boolean" && !ids.has(item.id),
+          typeof item.active === "boolean" &&
+            !ids.has(item.id) &&
+            (item.syncFolderId === undefined ||
+              item.syncFolderId === `kioku-${c.networkId}-raw-${item.id}`),
           "INVALID_REGISTRATION",
-          "Invalid or duplicate source entry.",
+          "Invalid or duplicate space entry.",
         );
         ids.add(item.id);
       }
       let changed = false;
-      const sources: Decision["sources"] = [];
-      for (const item of request.sources) {
-        const old = c.agents.find((a) => a.id === item.id);
+      const spaces: Decision["spaces"] = [];
+      for (const item of request.spaces) {
+        const old = c.spaces.find((a) => a.id === item.id);
         if (
           old &&
           (old.deviceId !== peer.deviceId ||
             old.local ||
+            old.syncFolderId !== item.syncFolderId ||
             (!old.active && item.active))
         ) {
-          sources.push({
+          spaces.push({
             id: item.id,
             accepted: false,
             error: "WRITER_CONFLICT",
@@ -153,9 +161,9 @@ export async function registerSources(c: Config, home: string): Promise<void> {
           continue;
         }
         if (!old) {
-          c.agents.push({
+          c.spaces.push({
             id: item.id,
-            role: "member",
+            ...(item.syncFolderId ? { syncFolderId: item.syncFolderId } : {}),
             deviceId: peer.deviceId,
             local: false,
             active: item.active,
@@ -166,20 +174,20 @@ export async function registerSources(c: Config, home: string): Promise<void> {
           old.active = item.active;
           changed = true;
         }
-        sources.push({ id: item.id, accepted: true });
+        spaces.push({ id: item.id, accepted: true });
       }
       if (changed) await save(home, c);
       // Reconcile before publishing acceptance, including after interrupted runs.
       const replyPath = join(
         registrationPath(c, peer.deviceId, "replies"),
-        "sources.json",
+        "spaces.json",
       );
       const response: Decision = {
-        version: 1,
+        version: 2,
         networkId: c.networkId,
         deviceId: peer.deviceId,
         requestHash: sha(JSON.stringify(request)),
-        sources,
+        spaces,
       };
       const existing = await document<Decision>(replyPath);
       if (

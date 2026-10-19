@@ -11,7 +11,14 @@ import {
   sha,
   withLock,
 } from "../core.js";
-import { binding, hubOnly, IdentityBinding, settings } from "./config.js";
+import {
+  binding,
+  hubOnly,
+  AccessGrant,
+  AccessPermissions,
+  grantAccess,
+  settings,
+} from "./config.js";
 
 export const ACCESS_MS = 15 * 60 * 1000;
 export const IDLE_MS = 90 * 24 * 60 * 60 * 1000;
@@ -22,11 +29,11 @@ export const SCOPE = "kioku:access";
 export const secret = () => randomBytes(32).toString("base64url");
 export const identifier = () => randomBytes(16).toString("hex");
 
-export interface BoundIdentity extends IdentityBinding {
-  bindingRevision: string;
+export interface BoundGrant extends AccessGrant {
   resource: string;
+  resourceRevision?: string;
 }
-export interface ConnectionGrant extends BoundIdentity {
+export interface ConnectionGrant extends BoundGrant {
   name: string;
   clientId: string;
   createdAt: number;
@@ -45,9 +52,9 @@ export interface AuthorizationRequest {
   state?: string;
   expiresAt: number;
   browserHash: string;
-  approval?: BoundIdentity;
+  approval?: BoundGrant;
 }
-interface Approval extends BoundIdentity {
+interface Approval extends BoundGrant {
   hash: string;
   expiresAt: number;
 }
@@ -78,24 +85,6 @@ const emptyState = (): OAuthState => ({
   codes: [],
   grants: [],
 });
-const revisionFor = (c: Config, id: string) => {
-  const a = c.agents.find((a) => a.id === id);
-  return sha(
-    JSON.stringify([
-      c.networkId,
-      c.deviceId,
-      c.root,
-      c.mode,
-      a?.authorizationRevision,
-      a?.id,
-      a?.role,
-      a?.active,
-      a?.local,
-      a?.deviceId,
-      a?.registration === "conflict",
-    ]),
-  );
-};
 export function oauthReady(c: Config) {
   hubOnly(c);
   requireThat(
@@ -104,26 +93,22 @@ export function oauthReady(c: Config) {
     "Enable MCP and OAuth with an HTTPS public URL first.",
   );
 }
-export function boundIdentity(c: Config, agentId: string): BoundIdentity {
-  const agent = c.agents.find((a) => a.id === agentId);
-  requireThat(agent, "UNKNOWN_AGENT", "Select an existing Hub Agent.");
-  const value: BoundIdentity = {
-    id: identifier(),
-    agentId,
-    role: agent.role,
-    ...(agent.role === "member" ? { sourceId: agentId } : {}),
-    bindingRevision: revisionFor(c, agentId),
+export function boundGrant(
+  c: Config,
+  permissions: AccessPermissions,
+): BoundGrant {
+  return {
+    ...grantAccess(c, permissions),
     resource: settings(c).publicUrl!,
+    resourceRevision: c.oauthRevision,
   };
-  binding(c, value);
-  return value;
 }
-export function validBinding(c: Config, value: BoundIdentity) {
+export function validBinding(c: Config, value: BoundGrant) {
   try {
     binding(c, value);
     return (
-      value.bindingRevision === revisionFor(c, value.agentId) &&
-      value.resource === settings(c).publicUrl
+      value.resource === settings(c).publicUrl &&
+      value.resourceRevision === c.oauthRevision
     );
   } catch {
     return false;
@@ -195,7 +180,10 @@ export async function oauthState<T>(
   });
 }
 
-export async function createApproval(home: string, agentId: string) {
+export async function createApproval(
+  home: string,
+  permissions: AccessPermissions,
+) {
   return oauthState(home, (s, c, now) => {
     oauthReady(c);
     requireThat(
@@ -203,7 +191,7 @@ export async function createApproval(home: string, agentId: string) {
       "OAUTH_LIMIT",
       "Too many pending approval credentials.",
     );
-    const approval = boundIdentity(c, agentId),
+    const approval = boundGrant(c, permissions),
       token = `kioku_approve_${secret()}`;
     s.approvals.push({
       ...approval,
@@ -211,9 +199,7 @@ export async function createApproval(home: string, agentId: string) {
       expiresAt: now + APPROVAL_MS,
     });
     return {
-      agentId: approval.agentId,
-      role: approval.role,
-      sourceId: approval.sourceId,
+      permissions: approval.permissions,
       credential: token,
       expiresAt: new Date(now + APPROVAL_MS).toISOString(),
       publicUrl: approval.resource,
@@ -228,9 +214,7 @@ export async function listConnections(home: string) {
       id: g.id,
       name: g.name,
       clientId: g.clientId,
-      agentId: g.agentId,
-      role: g.role,
-      sourceId: g.sourceId,
+      permissions: g.permissions,
       createdAt: new Date(g.createdAt).toISOString(),
       lastUsedAt: new Date(g.lastUsedAt).toISOString(),
       idleExpiresAt: new Date(g.lastUsedAt + IDLE_MS).toISOString(),
@@ -255,16 +239,16 @@ export async function revokeConnection(home: string, id: string) {
     return { id, revokedAt: new Date(grant.revokedAt!).toISOString() };
   });
 }
-export async function resetOAuth(home: string) {
+export async function resetOAuth(home: string, config?: Config) {
   // Works even if state.json is damaged; callers run this before exposing a
   // restored Hub. Keeping no old signing key prevents old grants reviving.
   return withLock(join(home, "oauth"), async () => {
-    hubOnly(await load(home));
+    hubOnly(config || (await load(home)));
     await atomicJson(join(home, "oauth", "state.json"), emptyState());
     return {
       reset: true,
       instruction:
-        "Reconnect clients and approve again. Agent identities, knowledge and static keys are unchanged.",
+        "Reconnect clients and approve again. Spaces, knowledge and static keys are unchanged.",
     };
   });
 }

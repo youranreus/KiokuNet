@@ -23,15 +23,23 @@ import {
   sha,
 } from "./core.js";
 
-export const viewPath = (home: string) =>
-  join(dirname(home), "views", "shared");
+export type ViewKind = "shared" | "spaces";
+export const viewPath = (home: string, kind: ViewKind = "shared") =>
+  kind === "shared"
+    ? join(dirname(home), "views", "shared")
+    : join(dirname(home), "views", "space-copies", "spaces");
+const statusPath = (home: string, kind: ViewKind) =>
+  join(home, kind === "shared" ? "view.json" : "spaces-view.json");
 export interface ViewStatus {
   lastSuccess?: string;
   fingerprint?: string;
   error?: string;
 }
-export async function viewStatus(home: string): Promise<ViewStatus> {
-  const path = join(home, "view.json");
+export async function viewStatus(
+  home: string,
+  kind: ViewKind = "shared",
+): Promise<ViewStatus> {
+  const path = statusPath(home, kind);
   return (await exists(path)) ? readJson<ViewStatus>(path) : {};
 }
 const internal = (name: string) =>
@@ -92,8 +100,11 @@ export async function removeViewGeneration(path: string): Promise<void> {
   }
   await rm(path, { recursive: true, force: true });
 }
-export async function checkView(home: string): Promise<void> {
-  const target = viewPath(home);
+export async function checkView(
+  home: string,
+  kind: ViewKind = "shared",
+): Promise<void> {
+  const target = viewPath(home, kind);
   requireThat(
     await exists(target),
     "VIEW_UNAVAILABLE",
@@ -121,28 +132,31 @@ export async function checkView(home: string): Promise<void> {
 export async function refreshView(
   c: Config,
   home: string,
+  kind: ViewKind = "shared",
 ): Promise<ViewStatus> {
-  const previous = await viewStatus(home),
-    source = join(c.root, "shared"),
-    target = viewPath(home);
+  const previous = await viewStatus(home, kind),
+    source = join(c.root, kind),
+    target = viewPath(home, kind);
   let stage: string | undefined;
   const link = join(dirname(target), `.publish-${randomUUID()}`);
   try {
-    const marker = await readJson<{ networkId: string }>(
-      join(source, ".kioku-shared.json"),
-    );
-    requireThat(
-      marker.networkId === c.networkId,
-      "VIEW_UNAVAILABLE",
-      "Waiting for shared knowledge from the Hub.",
-    );
+    if (kind === "shared") {
+      const marker = await readJson<{ networkId: string }>(
+        join(source, ".kioku-shared.json"),
+      );
+      requireThat(
+        marker.networkId === c.networkId,
+        "VIEW_UNAVAILABLE",
+        "Waiting for shared knowledge from the Hub.",
+      );
+    }
     const entries = await scan(source),
       fingerprint = sha(JSON.stringify(entries));
     if (previous.fingerprint === fingerprint && (await exists(target))) {
-      await checkView(home);
+      await checkView(home, kind);
       if (!previous.error) return previous;
       const recovered = { lastSuccess: new Date().toISOString(), fingerprint };
-      await atomicJson(join(home, "view.json"), recovered);
+      await atomicJson(statusPath(home, kind), recovered);
       return recovered;
     }
     const name = `generation-${randomUUID()}`;
@@ -186,7 +200,7 @@ export async function refreshView(
     await rename(link, target);
     stage = undefined;
     const status = { lastSuccess: new Date().toISOString(), fingerprint };
-    await atomicJson(join(home, "view.json"), status);
+    await atomicJson(statusPath(home, kind), status);
     // Retain one preceding generation for readers crossing the publication.
     const generations = (await readdir(dirname(target))).filter(
       (n) => /^generation-[a-f0-9-]+$/.test(n) && n !== name,
@@ -203,7 +217,7 @@ export async function refreshView(
     return status;
   } catch (e) {
     const failed = { ...previous, error: (e as Error).message };
-    await atomicJson(join(home, "view.json"), failed);
+    await atomicJson(statusPath(home, kind), failed);
     return failed;
   } finally {
     await rm(link, { force: true });

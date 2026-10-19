@@ -9,9 +9,24 @@ import { defaults, createKey } from "../../dist/mcp/config.js";
 import { startMcpServer } from "../../dist/mcp/server.js";
 import { removeFixture } from "./files.mjs";
 
+export const writerPermissions = {
+  readSpaces: [],
+  writeSpaces: ["writer"],
+  shared: "read",
+};
+export const curatorPermissions = {
+  readSpaces: "*",
+  writeSpaces: [],
+  shared: "read-write",
+};
+export const permissionsFor = (name = "writer") =>
+  name === "curator"
+    ? curatorPermissions
+    : { readSpaces: [], writeSpaces: [name], shared: "read" };
+
 export function cli(home, args) {
   const env = { ...process.env, KIOKU_SYNCTHING: resolve(".tools/syncthing") };
-  delete env.KIOKU_AGENT_ID;
+  delete env.KIOKU_SPACE_ID;
   const r = spawnSync(
     process.execPath,
     [resolve("dist/cli.js"), ...args, "--home", home, "--json"],
@@ -47,7 +62,7 @@ export async function fixture(t, mcpSettings = {}) {
     await removeFixture(dir);
   });
   const c = {
-    version: 1,
+    version: 2,
     networkId: "test",
     mode: "hub",
     root: join(dir, "data"),
@@ -60,10 +75,9 @@ export async function fixture(t, mcpSettings = {}) {
     receipts: {},
     serviceMode: "manual",
     sync: {},
-    agents: [
+    spaces: [
       {
         id: "writer",
-        role: "member",
         deviceId: "hub-device",
         local: true,
         active: true,
@@ -71,15 +85,13 @@ export async function fixture(t, mcpSettings = {}) {
       },
       {
         id: "other",
-        role: "member",
         deviceId: "hub-device",
         local: true,
         active: true,
         registration: "registered",
       },
       {
-        id: "leader",
-        role: "leader",
+        id: "notes",
         deviceId: "hub-device",
         local: true,
         active: true,
@@ -87,7 +99,6 @@ export async function fixture(t, mcpSettings = {}) {
       },
       {
         id: "remote",
-        role: "member",
         deviceId: "remote-device",
         local: false,
         active: true,
@@ -102,13 +113,13 @@ export async function fixture(t, mcpSettings = {}) {
       ...mcpSettings,
     },
   };
-  for (const a of c.agents)
-    await mkdir(join(c.root, "agents", a.id, "raw"), { recursive: true });
+  for (const a of c.spaces)
+    await mkdir(join(c.root, "spaces", a.id), { recursive: true });
   await mkdir(join(c.root, "shared"));
   await writeFile(join(c.root, "shared", "INDEX.md"), "Shared knowledge\n");
   await save(home, c);
-  const member = await createKey(home, c, "writer", "member"),
-    leader = await createKey(home, c, "leader", "leader");
+  const member = await createKey(home, c, writerPermissions),
+    leader = await createKey(home, c, curatorPermissions);
   server = await startMcpServer(home, { ...c.mcp, port: 0 });
   const url = `http://127.0.0.1:${server.address.port}/mcp`;
   const clientFor = async (token) => {
@@ -120,12 +131,12 @@ export async function fixture(t, mcpSettings = {}) {
     dir,
     home,
     c,
-    member,
-    leader,
+    writer: member,
+    curator: leader,
     url,
     server,
     clientFor,
-    memberClient: await clientFor(member.token),
-    leaderClient: await clientFor(leader.token),
+    writerClient: await clientFor(member.token),
+    curatorClient: await clientFor(leader.token),
   };
 }

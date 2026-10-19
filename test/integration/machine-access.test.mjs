@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 
 export function call(home, args) {
   const env = { ...process.env, KIOKU_SYNCTHING: resolve(".tools/syncthing") };
-  delete env.KIOKU_AGENT_ID;
+  delete env.KIOKU_SPACE_ID;
   const r = spawnSync(
     process.execPath,
     [resolve("dist/cli.js"), ...args, "--home", home, "--json"],
@@ -17,7 +17,7 @@ export function call(home, args) {
   return JSON.parse(r.stdout);
 }
 
-test("a Hub can exist without any source and keeps its files under one installation root", async () => {
+test("a Hub can exist without any space and keeps its files under one installation root", async () => {
   const home = await realpath(await mkdtemp(join(tmpdir(), "kioku-machine-")));
   try {
     const result = call(home, [
@@ -29,8 +29,11 @@ test("a Hub can exist without any source and keeps its files under one installat
     ]);
     assert.equal(result.ok, true, JSON.stringify(result));
     assert.equal(result.data.root, join(home, "data"));
-    assert.deepEqual(call(home, ["agent", "list"]).data.agents, []);
-    assert.equal(call(home, ["context"]).error.code, "IDENTITY_REQUIRED");
+    assert.deepEqual(call(home, ["space", "list"]).data.spaces, []);
+    assert.equal(
+      call(home, ["space", "info", "--space", "missing"]).error.code,
+      "UNKNOWN_SPACE",
+    );
     const config = JSON.parse(
       await readFile(join(home, "config/config.json"), "utf8"),
     );
@@ -50,7 +53,7 @@ test("a Hub can exist without any source and keeps its files under one installat
   }
 });
 
-test("machine pairing is independent of sources; trusted nodes create sources offline without another invitation", async () => {
+test("machine pairing is independent of spaces; trusted nodes create spaces offline without another invitation", async () => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "kioku-pair-")));
   const hub = join(dir, "hub"),
     node = join(dir, "node");
@@ -62,7 +65,7 @@ test("machine pairing is independent of sources; trusted nodes create sources of
     );
     assert.equal(call(hub, ["invite", "--out", join(dir, "invite")]).ok, true);
     const invitation = JSON.parse(await readFile(join(dir, "invite"), "utf8"));
-    assert.equal(invitation.payload.agentId, undefined);
+    assert.equal(invitation.payload.spaceId, undefined);
     const joined = call(node, [
       "join",
       "--invite",
@@ -73,7 +76,7 @@ test("machine pairing is independent of sources; trusted nodes create sources of
       "manual",
     ]);
     assert.equal(joined.ok, true, JSON.stringify(joined));
-    assert.deepEqual(call(node, ["agent", "list"]).data.agents, []);
+    assert.deepEqual(call(node, ["space", "list"]).data.spaces, []);
     assert.equal(
       call(hub, ["enroll", "--receipt", join(dir, "receipt")]).ok,
       true,
@@ -83,151 +86,15 @@ test("machine pairing is independent of sources; trusted nodes create sources of
       true,
     );
     for (const id of ["writer", "research"]) {
-      const added = call(node, ["source", "add", "--agent", id]);
+      const added = call(node, ["space", "add", "--space", id]);
       assert.equal(added.ok, true, JSON.stringify(added));
       assert.equal(added.data.registration, "pending");
     }
-    assert.equal(call(node, ["source", "list"]).data.agents.length, 2);
-    const lead = call(hub, [
-      "source",
-      "add",
-      "--agent",
-      "leader",
-      "--role",
-      "leader",
-    ]);
-    assert.equal(lead.ok, true, JSON.stringify(lead));
-    assert.equal(lead.data.registration, "registered");
-    assert.equal(
-      call(node, ["source", "add", "--agent", "bad", "--role", "leader"]).error
-        .code,
-      "HUB_REQUIRED",
-    );
+    assert.equal(call(node, ["space", "list"]).data.spaces.length, 2);
+    const added = call(hub, ["space", "add", "--space", "hub-notes"]);
+    assert.equal(added.ok, true, JSON.stringify(added));
+    assert.equal(added.data.registration, "registered");
   } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("same-account workspaces read a readonly copy while the Leader can edit shared directly", async () => {
-  const { mkdir, writeFile, readlink, unlink, symlink } = await import(
-    "node:fs/promises"
-  );
-  const dir = await realpath(await mkdtemp(join(tmpdir(), "kioku-view-")));
-  const home = join(dir, "hub"),
-    workspace = join(dir, "project");
-  try {
-    await mkdir(workspace);
-    assert.equal(
-      call(home, [
-        "init",
-        "--address",
-        "127.0.0.1:23543",
-        "--service",
-        "manual",
-      ]).ok,
-      true,
-    );
-    for (const [id, role] of [
-      ["writer", "member"],
-      ["leader", "leader"],
-    ])
-      assert.equal(
-        call(home, ["source", "add", "--agent", id, "--role", role]).ok,
-        true,
-      );
-    const attach = (id) => [
-      "workspace",
-      "attach",
-      "--source",
-      join(home, `data/agents/${id}/raw`),
-      "--raw-path",
-      join(workspace, id + "-raw"),
-      "--shared-path",
-      join(workspace, id + "-shared"),
-    ];
-    const member = call(home, attach("writer"));
-    assert.equal(member.ok, true, JSON.stringify(member));
-    assert.equal(call(home, attach("writer")).ok, true);
-    const secondEntry = attach("writer");
-    secondEntry[secondEntry.indexOf("--raw-path") + 1] = join(
-      workspace,
-      "second-raw",
-    );
-    secondEntry[secondEntry.indexOf("--shared-path") + 1] = join(
-      workspace,
-      "second-shared",
-    );
-    assert.equal(call(home, secondEntry).ok, true);
-    await writeFile(join(workspace, "second-raw/multi.md"), "same source");
-    assert.equal(
-      await readFile(join(workspace, "writer-raw/multi.md"), "utf8"),
-      "same source",
-    );
-    assert.equal(call(home, attach("leader")).ok, true);
-    assert.equal(
-      await readlink(join(workspace, "writer-shared")),
-      join(home, "views/shared"),
-    );
-    assert.equal(
-      await readlink(join(workspace, "leader-shared")),
-      join(home, "data/shared"),
-    );
-    await writeFile(join(workspace, "writer-raw/note.md"), "source");
-    assert.equal(
-      await readFile(join(home, "data/agents/writer/raw/note.md"), "utf8"),
-      "source",
-    );
-    if (process.getuid?.() !== 0) {
-      for (const write of [
-        () => writeFile(join(workspace, "writer-shared/Index.md"), "oops"),
-        () => writeFile(join(workspace, "writer-shared/new.md"), "oops"),
-        () => unlink(join(workspace, "writer-shared/Index.md")),
-      ])
-        await assert.rejects(write, (e) =>
-          ["EACCES", "EPERM", "EROFS"].includes(e.code),
-        );
-    }
-    await writeFile(join(workspace, "leader-shared/new.md"), "published");
-    assert.equal(call(home, ["workspace", "check"]).data.healthy, true);
-    const link = join(workspace, "writer-shared");
-    await unlink(link);
-    await mkdir(link);
-    assert.equal(
-      call(home, [
-        "workspace",
-        "detach",
-        "--raw-path",
-        join(workspace, "writer-raw"),
-      ]).error.code,
-      "WORKSPACE_CHANGED",
-    );
-    await rm(link, { recursive: true });
-    await symlink(join(home, "views/shared"), link);
-    assert.equal(
-      call(home, [
-        "workspace",
-        "detach",
-        "--raw-path",
-        join(workspace, "writer-raw"),
-      ]).data.knowledgePreserved,
-      true,
-    );
-    assert.equal(
-      await readFile(join(home, "data/agents/writer/raw/note.md"), "utf8"),
-      "source",
-    );
-  } finally {
-    // The test owner can remove its disposable read-only generations explicitly.
-    const { chmod, readdir, lstat } = await import("node:fs/promises");
-    async function writable(p) {
-      const s = await lstat(p);
-      if (s.isSymbolicLink()) return;
-      if (s.isDirectory()) {
-        await chmod(p, 0o700);
-        for (const n of await readdir(p)) await writable(join(p, n));
-      }
-    }
-    await writable(dir);
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -271,18 +138,9 @@ test(
         ]).ok,
         true,
       );
-      assert.equal(call(home, ["source", "add", "--agent", "writer"]).ok, true);
+      assert.equal(call(home, ["space", "add", "--space", "writer"]).ok, true);
       assert.equal(
-        call(home, [
-          "workspace",
-          "attach",
-          "--source",
-          join(home, "data/agents/writer/raw"),
-          "--raw-path",
-          join(project, "raw"),
-          "--shared-path",
-          join(project, "shared"),
-        ]).ok,
+        call(home, ["shared", "map", "--path", join(project, "shared")]).ok,
         true,
       );
       assert.equal(call(home, ["service", "start"]).ok, true);
@@ -333,7 +191,7 @@ test(
 );
 
 test(
-  "paired machines automatically register offline sources, reject writer conflicts and distribute readonly shared",
+  "paired machines automatically register offline spaces, reject writer conflicts and distribute readonly shared",
   { timeout: 120000 },
   async () => {
     const { mkdir, writeFile, chmod, readdir, lstat } = await import(
@@ -377,10 +235,7 @@ test(
         ]).ok,
         true,
       );
-      assert.equal(
-        call(hub, ["source", "add", "--agent", "reserved"]).ok,
-        true,
-      );
+      assert.equal(call(hub, ["space", "add", "--space", "reserved"]).ok, true);
       assert.equal(
         call(hub, ["invite", "--out", join(dir, "invite")]).ok,
         true,
@@ -404,25 +259,16 @@ test(
         true,
       );
       for (const id of ["writer", "reserved"])
-        assert.equal(call(node, ["source", "add", "--agent", id]).ok, true);
+        assert.equal(call(node, ["space", "add", "--space", id]).ok, true);
       await writeFile(
-        join(node, "data/agents/writer/raw/offline.md"),
+        join(node, "data/spaces/writer/offline.md"),
         "written offline",
       );
-      const attach = [
-        "workspace",
-        "attach",
-        "--source",
-        join(node, "data/agents/writer/raw"),
-        "--raw-path",
-        join(project, "raw"),
-        "--shared-path",
-        join(project, "shared"),
-      ];
+      const attach = ["shared", "map", "--path", join(project, "shared")];
       assert.equal(call(node, attach).error.code, "VIEW_UNAVAILABLE");
       // A temporary local disk obstacle must not permanently acknowledge a
       // registration whose Syncthing folder has never been configured.
-      const marker = join(node, "data/agents/writer/raw/.stfolder");
+      const marker = join(node, "data/spaces/writer/.stfolder");
       await writeFile(marker, "temporary obstacle");
       assert.equal(call(hub, ["service", "start"]).ok, true);
       assert.equal(call(node, ["service", "start"]).ok, true);
@@ -430,15 +276,14 @@ test(
         assert.match(call(node, ["status"]).data.worker.error || "", /EEXIST/),
       );
       assert.equal(
-        call(node, ["source", "list"]).data.agents.find(
-          (a) => a.id === "writer",
-        ).registration,
+        call(node, ["space", "list"]).data.spaces.find((a) => a.id === "writer")
+          .registration,
         "pending",
       );
       await rm(marker);
       await wait(() =>
         assert.equal(
-          call(node, ["source", "list"]).data.agents.find(
+          call(node, ["space", "list"]).data.spaces.find(
             (a) => a.id === "writer",
           ).registration,
           "registered",
@@ -446,7 +291,7 @@ test(
       );
       await wait(() =>
         assert.equal(
-          call(node, ["source", "list"]).data.agents.find(
+          call(node, ["space", "list"]).data.spaces.find(
             (a) => a.id === "reserved",
           ).registration,
           "conflict",
@@ -454,15 +299,12 @@ test(
       );
       await wait(async () =>
         assert.equal(
-          await readFile(
-            join(hub, "data/agents/writer/raw/offline.md"),
-            "utf8",
-          ),
+          await readFile(join(hub, "data/spaces/writer/offline.md"), "utf8"),
           "written offline",
         ),
       );
       assert.equal(
-        call(hub, ["source", "list"]).data.agents.find(
+        call(hub, ["space", "list"]).data.spaces.find(
           (a) => a.id === "reserved",
         ).local,
         true,
@@ -475,14 +317,14 @@ test(
           "shared decision",
         ),
       );
-      assert.equal(call(node, ["source", "add", "--agent", "second"]).ok, true);
+      assert.equal(call(node, ["space", "add", "--space", "second"]).ok, true);
       await writeFile(
-        join(node, "data/agents/second/raw/online.md"),
+        join(node, "data/spaces/second/online.md"),
         "no second invitation",
       );
       await wait(async () =>
         assert.equal(
-          await readFile(join(hub, "data/agents/second/raw/online.md"), "utf8"),
+          await readFile(join(hub, "data/spaces/second/online.md"), "utf8"),
           "no second invitation",
         ),
       );
@@ -556,7 +398,7 @@ test(
   },
 );
 
-test("concurrent CLI source creation shares the configuration lock without losing a source", async () => {
+test("concurrent CLI space creation shares the configuration lock without losing a space", async () => {
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
   const exec = promisify(execFile);
@@ -578,10 +420,10 @@ test("concurrent CLI source creation shares the configuration lock without losin
       Array.from({ length: 6 }, (_, i) =>
         exec(process.execPath, [
           resolve("dist/cli.js"),
-          "source",
+          "space",
           "add",
-          "--agent",
-          `source-${i}`,
+          "--space",
+          `space-${i}`,
           "--home",
           home,
           "--json",
@@ -589,7 +431,7 @@ test("concurrent CLI source creation shares the configuration lock without losin
       ),
     );
     for (const r of results) assert.equal(JSON.parse(r.stdout).ok, true);
-    assert.equal(call(home, ["source", "list"]).data.agents.length, 6);
+    assert.equal(call(home, ["space", "list"]).data.spaces.length, 6);
   } finally {
     await rm(home, { recursive: true, force: true });
   }

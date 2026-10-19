@@ -22,7 +22,7 @@ async function fixture(t, mode) {
   const config = join(home, "config", "config.json");
   if (mode) {
     await mkdir(join(home, "config"), { recursive: true });
-    await writeFile(config, JSON.stringify({ version: 1, agents: [], mode }));
+    await writeFile(config, JSON.stringify({ version: 2, spaces: [], mode }));
   }
   const bin = join(dir, "bin");
   await mkdir(bin);
@@ -103,7 +103,7 @@ test("explicit guide supports each runtime and forwards project scope and source
       "kioku",
       "--scope",
       "project",
-      "--source",
+      "--repository",
       source,
     ]);
     assert.equal(result.status, 0, JSON.stringify(result));
@@ -124,10 +124,10 @@ test("explicit guide supports each runtime and forwards project scope and source
   }
 });
 
-test("curation remains an explicit Hub-only installation", async (t) => {
+test("curation remains optional and can be installed without a local Hub", async (t) => {
   for (const [mode, code] of [
-    [undefined, "NOT_INITIALIZED"],
-    ["node", "LEADER_REQUIRED"],
+    [undefined, undefined],
+    ["node", undefined],
     ["hub", undefined],
   ]) {
     const f = await fixture(t, mode);
@@ -157,7 +157,7 @@ test("invalid install options fail before invoking the installer", async (t) => 
     [["--runtime", "unknown"], "UNSUPPORTED_RUNTIME"],
     [["--runtime", "codex", "--skill", "unknown"], "UNSUPPORTED_SKILL"],
     [["--runtime", "codex", "--scope", "unknown"], "USAGE"],
-    [["--runtime", "codex", "--source=-unsafe"], "INVALID_SOURCE"],
+    [["--runtime", "codex", "--repository=-unsafe"], "INVALID_SOURCE"],
   ]) {
     const result = f.call(args);
     assert.equal(result.status, 2);

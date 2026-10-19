@@ -54,9 +54,8 @@ test(
     ]);
     assert.equal(ok(home, ["mcp", "status"]).enabled, false);
     assert.equal(ok(home, ["mcp", "status"]).running, false);
-    ok(home, ["source", "add", "--agent", "writer"]);
-    ok(home, ["source", "add", "--agent", "leader", "--role", "leader"]);
-    const key = ok(home, ["mcp", "key", "create", "--agent", "writer"]);
+    ok(home, ["space", "add", "--space", "writer"]);
+    const key = ok(home, ["mcp", "key", "create", "--write-space", "writer"]);
     const listenPort = await port(),
       url = `http://127.0.0.1:${listenPort}/mcp`;
     const enabled = ok(home, [
@@ -75,7 +74,7 @@ test(
     assert.equal(
       (
         await call(client, "create_file", {
-          path: "/raw/writer/live.md",
+          path: "/spaces/writer/live.md",
           content: "created remotely",
         })
       ).isError,
@@ -112,14 +111,14 @@ test(
     );
     clients.push(oauthClient);
     assert.equal(
-      (await call(oauthClient, "read_file", { path: "/raw/writer/live.md" }))
+      (await call(oauthClient, "read_file", { path: "/spaces/writer/live.md" }))
         .content,
       "created remotely",
     );
     client = await connect(url, key.token);
     clients.push(client);
     assert.equal(
-      (await call(client, "read_file", { path: "/raw/writer/live.md" }))
+      (await call(client, "read_file", { path: "/spaces/writer/live.md" }))
         .content,
       "created remotely",
     );
@@ -191,13 +190,20 @@ test(
       String(await port()),
     ]);
     ok(hub, ["enroll", "--receipt", join(root, "receipt")]);
-    ok(hub, ["source", "add", "--agent", "leader", "--role", "leader"]);
-    ok(node, ["source", "add", "--agent", "remote"]);
+    ok(node, ["space", "add", "--space", "remote"]);
     await writeFile(
-      join(node, "data/agents/remote/raw/evidence.md"),
+      join(node, "data/spaces/remote/evidence.md"),
       "remote source text",
     );
-    const leader = ok(hub, ["mcp", "key", "create", "--agent", "leader"]);
+    const leader = ok(hub, [
+      "mcp",
+      "key",
+      "create",
+      "--read-space",
+      "*",
+      "--shared",
+      "read-write",
+    ]);
     const listenPort = await port();
     ok(hub, [
       "mcp",
@@ -216,7 +222,7 @@ test(
     let result;
     for (let i = 0; i < 150; i++) {
       result = await call(client, "read_file", {
-        path: "/raw/remote/evidence.md",
+        path: "/spaces/remote/evidence.md",
       });
       if (!result.isError) break;
       await new Promise((r) => setTimeout(r, 200));
@@ -225,7 +231,7 @@ test(
     assert.equal(
       (
         await call(client, "write_file", {
-          path: "/raw/remote/evidence.md",
+          path: "/spaces/remote/evidence.md",
           content: "forbidden",
           version: result.version,
         })
