@@ -32,7 +32,13 @@ npm run release -- --draft
 npm run release
 ```
 
-也可直接执行 `npm run release` 一次完成。内部先创建草稿，附件上传并下载校验成功后发布 npm，确认 npm 包的 SHA-512 integrity 与本地一致后再公开 GitHub。正式版本使用 npm `latest` 标签；预发布版本（如 `0.2.0-beta.1`）使用 `next`，并标记为 GitHub prerelease，不影响 `latest`。
+也可直接执行 `npm run release` 一次完成。内部先创建草稿，附件上传并下载校验成功后发布 npm，确认 npm 包的 SHA-512 integrity 与本地一致后再公开 GitHub。正式版本使用 npm `latest` 标签；预发布版本（如 `0.3.0-beta.1`）使用 `next`，并标记为 GitHub prerelease，不影响 `latest`。
+
+npm 接受上传后，包可能还在处理中。脚本会立即查询精确版本；如果返回 E404，则默认每 15 秒重试一次，最多等待 10 分钟（包含查询耗时），并输出等待进度。包可见且哈希一致后，自动继续公开 GitHub，无需手动重跑。等待期间不会再次执行 `npm publish`。如需调整，两个参数均以正数秒为单位：
+
+```bash
+npm run release -- --npm-wait-timeout 900 --npm-wait-interval 30
+```
 
 `--dry-run` 只读取本地 Git 和远端 refs，展示版本、提交、tag、目标仓库、附件及 npm registry/dist-tag 计划，不构建、不登录 GitHub API、不访问 npm registry、不创建或推送 tag。它仍要求工作区干净且 HEAD 与远端 master 一致；不会验证 npm 包名可用性或账号发布权限。
 
@@ -43,7 +49,7 @@ npm run release
 npm run release:version -- patch
 # npm run release:version -- minor
 # npm run release:version -- major
-# npm run release:version -- 0.2.0-beta.1
+# npm run release:version -- 0.3.0-beta.1
 
 # 审阅版本及随版本变化的文档，然后提交
 # 若 README 中保留了特定版本的安装示例，按本次版本更新示例
@@ -75,7 +81,7 @@ npm run release:tags
 3. `npm pack` 生成编译后的安装包，计算 GitHub 附件的 SHA-256 和 npm 包的 SHA-512 integrity。若 npm 已有该版本，先核对包内容，一致才继续。
 4. 再次检查源代码和远端状态，创建/推送本次 tag。
 5. 创建或复用草稿，上传缺失附件，重新下载验证。
-6. 非 `--draft` 模式下，将该 `.tgz` 通过 `npm publish` 发布，显式指定 registry、public、latest/next，并禁用生命周期脚本，避免再次构建。读取 registry 的精确版本元数据核对 SHA-512 integrity，通过后公开 GitHub Release。
+6. 非 `--draft` 模式下，将该 `.tgz` 通过 `npm publish` 发布，显式指定 registry、public、latest/next，并禁用生命周期脚本，避免再次构建。成功上传后等待 registry 的精确版本可见并核对 SHA-512 integrity，通过后公开 GitHub Release。
 
 集成测试使用真实 Syncthing，需要本机可监听临时端口。依赖准备可能访问官方发布源；首次运行需要网络。macOS 原生服务和 Skill 网络安装测试仍由各自的 `KIOKU_TEST_*` 开关控制。
 
@@ -114,7 +120,9 @@ env -u GITHUB_TOKEN -u GH_TOKEN npm run release
 
 GitHub 与 npm 无法原子发布：npm 成功后 GitHub 公开失败时，npm 包已经可见，GitHub 保留草稿。重跑会读取 npm 的实际状态；相同版本且 SHA-512 integrity 一致则跳过发布，不需要重复上传，也不回退或改写已有 dist-tag。不一致则停止，必须排查或使用新版本。脚本不会 unpublish、覆盖 npm 版本或撤回公开的 GitHub Release。
 
-如果网络在 npm 上传或最终公开操作后中断，不要假定发布失败：重跑会读取远端实际状态。若 registry 尚未能读到刚发布的版本，本次停止，稍后重跑即可。正式包更新请增加版本，不覆盖旧版本。
+自动等待只处理成功上传后精确版本查询返回的 E404。认证错误、服务错误、无效元数据和哈希不一致不会被当作“仍在处理中”循环重试。等待超时（包括查询本身超时）会报错退出、释放发布锁，并保留 tag 和 GitHub 草稿及附件；已接受的 npm 上传不会被撤销。
+
+如果等待超时、网络在 npm 上传或最终公开操作后中断，不要假定发布失败。先查询 `npm view @reus-able/kioku-net@<version> --registry=https://registry.npmjs.org/ --@reus-able:registry=https://registry.npmjs.org/` 确认 npm 状态；仍在处理中时不要重复上传。待该版本可见后，在原提交上重跑会读取远端实际状态、校验并复用 npm 包，继续 GitHub 发布。正式包更新请增加版本，不覆盖旧版本。
 
 ## 用户安装
 

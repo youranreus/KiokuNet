@@ -19,6 +19,7 @@
 <p align="center">
   <a href="#快速接入">快速接入</a> ·
   <a href="knowledge/usage.md">使用指南</a> ·
+  <a href="https://www.npmjs.com/package/@reus-able/kioku-net">npm 包</a> ·
   <a href="https://github.com/youranreus/KiokuNet/releases">下载</a> ·
   <a href="knowledge/releasing.md">发布指南</a> ·
   <a href="https://github.com/youranreus/KiokuNet/issues">反馈问题</a>
@@ -49,6 +50,8 @@ Hub 还可显式启用 [MCP 服务](knowledge/mcp.md)，让 Codex、Claude Code 
 
 ## 安装
 
+包名为 [`@reus-able/kioku-net`](https://www.npmjs.com/package/@reus-able/kioku-net)，安装后的命令为 `kioku`。版本与变更说明见 [GitHub Releases](https://github.com/youranreus/KiokuNet/releases)。
+
 需要 Node.js ≥ 22.20、npm，macOS 或 Linux（arm64 / amd64）。从 npm 安装：
 
 ```bash
@@ -56,9 +59,9 @@ npm install -g @reus-able/kioku-net
 kioku --help
 ```
 
-预发布版本使用 `npm install -g @reus-able/kioku-net@next`。也可下载 [GitHub Release](https://github.com/youranreus/KiokuNet/releases) 的 `.tgz`，校验后执行 `npm install -g ./reus-able-kioku-net-<version>.tgz`。发布流程与校验方法见 [发布指南](knowledge/releasing.md)。
+也可下载 [GitHub Release](https://github.com/youranreus/KiokuNet/releases) 的 `.tgz` 与 `SHA256SUMS`，校验后执行 `npm install -g ./reus-able-kioku-net-<version>.tgz`。校验方法见 [发布指南](knowledge/releasing.md)。有预发布版本并设置 `next` 标签时，可用 `npm install -g @reus-able/kioku-net@next` 安装。
 
-当前源码安装：
+开发时，在克隆的仓库根目录安装当前源码：
 
 ```bash
 npm ci
@@ -141,3 +144,9 @@ npm run format:check
 ```
 
 测试使用临时目录，集成测试需要本地端口权限。防误写测试使用当前非 root 账号；原生服务和 Skill 分发测试需显式启用。[反馈问题](https://github.com/youranreus/KiokuNet/issues) 时请附系统、版本和去除敏感信息的复现步骤。
+
+### 发布
+
+维护者更新版本、提交并推送 `master` 后，在干净工作区执行 `npm run release`，将同一个安装包发布到 npm 和 GitHub。当前源码中的发布脚本会在 npm 接受上传后自动等待版本可见并校验哈希：默认每 15 秒检查一次，最多等待 10 分钟，通过后继续公开 GitHub Release。超时保留草稿和附件，等待期间不重复上传 npm。
+
+`--dry-run` 预览计划；`--draft` 只准备 GitHub 草稿，不发布 npm。单独 `git push` 不会触发发布。认证、等待参数和中断恢复见 [发布指南](knowledge/releasing.md)。

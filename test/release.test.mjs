@@ -59,6 +59,12 @@ const version=JSON.parse(fs.readFileSync('package.json')).version;
 if(name==='npm'){
  if(a[0]==='view') {
   if(s.npmFailure){console.log(JSON.stringify({error:{code:s.npmFailure}}));process.exit(1);}
+  if(s.npm){
+   s.npmVerificationReads=(s.npmVerificationReads||0)+1;save();
+   if(s.npmFailureAfterPublish){console.log(JSON.stringify({error:{code:s.npmFailureAfterPublish}}));process.exit(1);}
+   if(s.npmPendingReads>0){s.npmPendingReads--;save();console.log(JSON.stringify({error:{code:'E404'}}));process.exit(1);}
+   if(s.npmQueryHangs){setInterval(()=>{},1000);return;}
+  }
   if(!s.npm){console.log(JSON.stringify({error:{code:'E404'}}));process.exit(1);}
   console.log(JSON.stringify(s.npm));process.exit(0);
  }
@@ -71,6 +77,7 @@ if(name==='npm'){
   if(s.failPublishOnce){s.failPublishOnce=false;save();process.exit(1);}
   const bytes=fs.readFileSync(a[1]);
   s.npm={name:'@reus-able/kioku-net',version,dist:{integrity:'sha512-'+createHash('sha512').update(bytes).digest('base64')}};
+  if(s.npmIntegrityMismatch)s.npm.dist.integrity='sha512-different';
   s.npmBytes=bytes.toString('base64');s.npmTag=a[a.indexOf('--tag')+1];save();
   if(s.failAfterPublishOnce){s.failAfterPublishOnce=false;save();process.exit(1);}
   process.exit(0);
@@ -475,3 +482,142 @@ for (const failure of [
     }
   });
 }
+
+test("npm processing is polled until visible, then verified before GitHub publication", async () => {
+  const f = await fixture();
+  try {
+    await f.update({ npmPendingReads: 2 });
+    const result = f.run(
+      "--npm-wait-timeout",
+      "5",
+      "--npm-wait-interval",
+      "0.05",
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /not visible yet/);
+    assert.match(result.stdout, /npm verified/);
+    const state = await f.read();
+    assert.equal(state.release.draft, false);
+    assert.equal(state.npmVerificationReads, 3);
+    assert.equal(state.npmBytes, state.blobs["reus-able-kioku-net-0.1.0.tgz"]);
+    const commands = await f.commands();
+    assert.equal(
+      commands.filter((c) => c.name === "npm" && c.args[0] === "publish")
+        .length,
+      1,
+    );
+    const publishIndex = commands.findIndex(
+      (c) => c.name === "npm" && c.args[0] === "publish",
+    );
+    const editIndex = commands.findIndex(
+      (c) => c.name === "gh" && c.args[1] === "edit",
+    );
+    assert.equal(
+      commands
+        .slice(publishIndex + 1, editIndex)
+        .filter((c) => c.name === "npm" && c.args[0] === "view").length,
+      3,
+    );
+  } finally {
+    await f.cleanup();
+  }
+});
+
+for (const state of [{ npmPendingReads: 1000 }, { npmQueryHangs: true }]) {
+  test(`npm verification timeout preserves the draft (${Object.keys(state)[0]})`, async () => {
+    const f = await fixture();
+    try {
+      await f.update(state);
+      const result = f.run(
+        "--npm-wait-timeout",
+        "0.5",
+        "--npm-wait-interval",
+        "0.05",
+      );
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, /Timed out waiting for npm publication/);
+      assert.equal((await f.read()).release.draft, true);
+      assert.equal((await f.read()).release.assets.length, 2);
+      let commands = await f.commands();
+      assert.equal(
+        commands.filter((c) => c.name === "npm" && c.args[0] === "publish")
+          .length,
+        1,
+      );
+      assert.ok(!commands.some((c) => c.name === "gh" && c.args[1] === "edit"));
+      // The version becomes visible later; resume without publishing it twice.
+      await f.update({ npmPendingReads: 0, npmQueryHangs: false });
+      const resumed = f.run();
+      assert.equal(resumed.status, 0, resumed.stderr);
+      assert.equal((await f.read()).release.draft, false);
+      commands = await f.commands();
+      assert.equal(
+        commands.filter((c) => c.name === "npm" && c.args[0] === "publish")
+          .length,
+        1,
+      );
+    } finally {
+      await f.cleanup();
+    }
+  });
+}
+
+for (const state of [
+  { npmFailureAfterPublish: "E401" },
+  { npmFailureAfterPublish: "E503" },
+  { npmPendingReads: 1, npmIntegrityMismatch: true },
+]) {
+  test(`npm verification errors stop without exposing GitHub (${JSON.stringify(state)})`, async () => {
+    const f = await fixture();
+    try {
+      await f.update(state);
+      const result = f.run(
+        "--npm-wait-timeout",
+        "5",
+        "--npm-wait-interval",
+        "0.05",
+      );
+      assert.equal(result.status, 1);
+      assert.match(
+        result.stderr,
+        state.npmFailureAfterPublish
+          ? new RegExp(state.npmFailureAfterPublish)
+          : /Existing npm package differs/,
+      );
+      const final = await f.read();
+      assert.equal(final.release.draft, true);
+      assert.equal(
+        final.npmVerificationReads,
+        state.npmIntegrityMismatch ? 2 : 1,
+      );
+      assert.equal(
+        (await f.commands()).filter(
+          (c) => c.name === "npm" && c.args[0] === "publish",
+        ).length,
+        1,
+      );
+    } finally {
+      await f.cleanup();
+    }
+  });
+}
+
+test("npm wait settings reject invalid durations before external writes", async () => {
+  const f = await fixture();
+  try {
+    for (const option of ["--npm-wait-timeout", "--npm-wait-interval"]) {
+      for (const value of ["0", "-1", "NaN", "Infinity", "2147484"]) {
+        const result = f.run(`${option}=${value}`);
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /must be a positive number of seconds/);
+      }
+    }
+    await assert.rejects(readFile(f.log), { code: "ENOENT" });
+    const plan = f.run("--dry-run");
+    assert.equal(plan.status, 0, plan.stderr);
+    assert.equal(JSON.parse(plan.stdout).npm.waitTimeoutSeconds, 600);
+    assert.equal(JSON.parse(plan.stdout).npm.waitIntervalSeconds, 15);
+  } finally {
+    await f.cleanup();
+  }
+});

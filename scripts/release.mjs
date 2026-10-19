@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { setTimeout as sleep } from "node:timers/promises";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const registry = "https://registry.npmjs.org/";
@@ -17,17 +18,21 @@ const registryArgs = [
   `--@reus-able:registry=${registry}`,
 ];
 const help = `Usage: npm run release -- [--dry-run] [--draft] [--notes FILE]
+  [--npm-wait-timeout SECONDS] [--npm-wait-interval SECONDS]
 
 Release the committed package.json version from a clean master branch.
 Requires master to match origin/master, Node >=22.20, npm, git and authenticated gh.
 Creates/reuses vVERSION at HEAD, pushes only that tag, uploads the npm tarball
 and SHA256SUMS to a draft, verifies downloads, publishes the same tarball to npm,
 then publishes GitHub unless --draft. Stable versions use latest; prereleases use next.
+After npm accepts publication, wait for registry visibility and verify integrity.
 Existing tags/assets are never overwritten. Rerun after a partial failure.
 
 --dry-run  Read-only Git preflight and plan; no build, registry access or writes.
 --draft    Upload and verify GitHub assets; do not access or publish to npm.
 --notes    UTF-8 release notes file; otherwise generate notes with install steps.
+--npm-wait-timeout   Maximum registry verification wait in seconds (default: 600).
+--npm-wait-interval  Delay between visibility checks in seconds (default: 15).
 
 Bump first: npm run release:version -- patch (or minor, major, explicit version).
 Review, commit and push version changes before running this script.
@@ -35,12 +40,17 @@ Review, commit and push version changes before running this script.
 function check(condition, message) {
   if (!condition) throw new Error(message);
 }
-function command(file, args, { allowFailure = false, visible = false } = {}) {
+function command(
+  file,
+  args,
+  { allowFailure = false, visible = false, timeout } = {},
+) {
   const r = spawnSync(file, args, {
     cwd: root,
     encoding: "utf8",
     stdio: visible ? "inherit" : "pipe",
     maxBuffer: 16 * 1024 * 1024,
+    timeout,
     env: { ...process.env, GH_PROMPT_DISABLED: "1", GH_HOST: "github.com" },
   });
   if (r.error) throw r.error;
@@ -148,11 +158,11 @@ function readRelease(repo, tag) {
   );
   return pages.flat().find((release) => release.tag_name === tag);
 }
-function readNpmVersion(spec) {
+function readNpmVersion(spec, timeout) {
   const r = command(
     "npm",
     ["view", spec, "--json", ...registryArgs, "--prefer-online"],
-    { allowFailure: true },
+    { allowFailure: true, timeout },
   );
   let metadata;
   try {
@@ -179,7 +189,44 @@ function verifyNpmVersion(metadata, integrity) {
     "Existing npm package differs from this build. It will not be overwritten; choose a new version.",
   );
 }
-function publishNpm(spec, packageFile, integrity, npmTag) {
+function secondsOption(value, name) {
+  const seconds = Number(value);
+  check(
+    Number.isFinite(seconds) && seconds >= 0.001 && seconds <= 2147483,
+    `${name} must be a positive number of seconds between 0.001 and 2147483.`,
+  );
+  return Math.ceil(seconds * 1000);
+}
+async function waitForNpmVersion(spec, { timeoutMs, intervalMs }) {
+  const started = performance.now();
+  const timeoutMessage =
+    `Timed out waiting for npm publication of ${spec} after ${timeoutMs / 1000}s. ` +
+    "npm may still be processing it; the GitHub draft is preserved. " +
+    "Check the registry before rerunning; do not publish the package again while it is processing.";
+  for (;;) {
+    const remaining = timeoutMs - (performance.now() - started);
+    check(remaining > 0, timeoutMessage);
+    let metadata;
+    try {
+      // Bound the query itself as well as polling delays, including npm's own retries.
+      metadata = readNpmVersion(spec, Math.ceil(remaining));
+    } catch (error) {
+      if (error.code === "ETIMEDOUT") throw new Error(timeoutMessage);
+      throw error;
+    }
+    if (metadata) return metadata;
+    const delay = Math.min(
+      intervalMs,
+      timeoutMs - (performance.now() - started),
+    );
+    check(delay > 0, timeoutMessage);
+    console.log(
+      `npm accepted ${spec}, but it is not visible yet (${Math.floor((performance.now() - started) / 1000)}s elapsed). Retrying verification in ${Math.ceil(delay / 1000)}s; no repeat publish.`,
+    );
+    await sleep(delay);
+  }
+}
+async function publishNpm(spec, packageFile, integrity, npmTag, waitOptions) {
   // Re-read immediately before publication, including when resuming a partial release.
   let metadata = readNpmVersion(spec);
   if (!metadata) {
@@ -199,11 +246,7 @@ function publishNpm(spec, packageFile, integrity, npmTag) {
       // Inherit the terminal for npm's interactive authentication / 2FA challenge.
       { visible: true },
     );
-    metadata = readNpmVersion(spec);
-    check(
-      metadata,
-      "Unable to confirm npm publication. Rerun to inspect/resume.",
-    );
+    metadata = await waitForNpmVersion(spec, waitOptions);
   }
   verifyNpmVersion(metadata, integrity);
   console.log(`npm verified: ${spec} (${registry})`);
@@ -255,6 +298,8 @@ async function main() {
       "dry-run": { type: "boolean" },
       draft: { type: "boolean" },
       notes: { type: "string" },
+      "npm-wait-timeout": { type: "string", default: "600" },
+      "npm-wait-interval": { type: "string", default: "15" },
       help: { type: "boolean" },
     },
   });
@@ -262,6 +307,10 @@ async function main() {
     console.log(help);
     return;
   }
+  const waitOptions = {
+    timeoutMs: secondsOption(opts["npm-wait-timeout"], "--npm-wait-timeout"),
+    intervalMs: secondsOption(opts["npm-wait-interval"], "--npm-wait-interval"),
+  };
   const [major, minor] = process.versions.node.split(".").map(Number);
   check(
     major > 22 || (major === 22 && minor >= 20),
@@ -325,7 +374,14 @@ async function main() {
         remoteTag: state.remote.tag ? "reuse" : "push",
         release: opts.draft ? "draft" : prerelease ? "prerelease" : "public",
         assets: [packageFilename, "SHA256SUMS"],
-        npm: { registry, package: npmSpec, tag: npmTag, publish: !opts.draft },
+        npm: {
+          registry,
+          package: npmSpec,
+          tag: npmTag,
+          publish: !opts.draft,
+          waitTimeoutSeconds: waitOptions.timeoutMs / 1000,
+          waitIntervalSeconds: waitOptions.intervalMs / 1000,
+        },
         dryRun: Boolean(opts["dry-run"]),
       },
       null,
@@ -450,7 +506,8 @@ async function main() {
     release = readRelease(repo, tag);
     check(release, "Release disappeared; rerun to inspect.");
     await verifyAssets(repo, tag, release, files, true);
-    if (!opts.draft) publishNpm(npmSpec, packageFile, integrity, npmTag);
+    if (!opts.draft)
+      await publishNpm(npmSpec, packageFile, integrity, npmTag, waitOptions);
     if (release.draft && !opts.draft)
       command("gh", ["release", "edit", tag, "--repo", repo, "--draft=false"]);
     const final = readRelease(repo, tag);
